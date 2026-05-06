@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Workspace Tracker MVP
 
-## Getting Started
+A Next.js + Supabase workspace tracker with authentication, attendance, task planning, timers, dashboard metrics, and calendar history.
 
-First, run the development server:
+## Tech Stack
+
+- Next.js (App Router)
+- TypeScript + Tailwind CSS
+- Supabase Auth + Postgres + RLS
+- React Hook Form + Zod
+
+## 1) Environment Variables
+
+Create `.env.local` from `.env.example`:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Required values:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 2) Database Setup (Supabase)
 
-## Learn More
+Run SQL from `supabase/schema.sql` in Supabase SQL Editor.
 
-To learn more about Next.js, take a look at the following resources:
+This creates:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `tasks`
+- `attendance`
+- `timer_sessions`
+- RLS policies for each table
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 3) Run Project
 
-## Deploy on Vercel
+```bash
+npm install
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Open `http://localhost:3000`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 4) Build / Lint
+
+```bash
+npm run lint
+npm run build
+```
+
+## Routes
+
+- `/login`, `/register`
+- `/` dashboard
+- `/today`
+- `/tasks`
+- `/calendar`
+- `/settings`
+- APIs under `/api/*`

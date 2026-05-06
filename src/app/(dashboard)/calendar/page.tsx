@@ -1,8 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { addDays, format, startOfWeek, subWeeks } from "date-fns";
 import { useHistory } from "@/lib/hooks/use-history";
 import { formatDuration } from "@/lib/utils/time";
+
+type DayStats = {
+  date: string;
+  completed: number;
+  total: number;
+  totalSeconds: number;
+  sessions: Array<{
+    id: string;
+    status: string;
+    total_seconds: number;
+    task?: { title?: string } | null;
+  }>;
+};
 
 function getScoreColor(value: number) {
   if (value >= 80) return "bg-emerald-500";
@@ -12,106 +26,119 @@ function getScoreColor(value: number) {
 
 export default function CalendarPage() {
   const { history, loading } = useHistory();
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const dailyRows = useMemo(() => {
+  const weekSections = useMemo(() => {
     if (!history) return [];
 
-    const map = new Map<string, { totalSeconds: number; completed: number; total: number }>();
+    const dailyMap = new Map<string, DayStats>();
 
     history.sessions.forEach((session) => {
-      const day = session.created_at.slice(0, 10);
-      const current = map.get(day) ?? { totalSeconds: 0, completed: 0, total: 0 };
-      current.totalSeconds += session.total_seconds ?? 0;
+      const date = session.created_at.slice(0, 10);
+      const current = dailyMap.get(date) ?? {
+        date,
+        completed: 0,
+        total: 0,
+        totalSeconds: 0,
+        sessions: [],
+      };
+
       current.total += 1;
+      current.totalSeconds += session.total_seconds ?? 0;
       if (session.status === "completed") current.completed += 1;
-      map.set(day, current);
+      current.sessions.push({
+        id: session.id,
+        status: session.status,
+        total_seconds: session.total_seconds ?? 0,
+        task: session.task,
+      });
+
+      dailyMap.set(date, current);
     });
 
-    return [...map.entries()]
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-      .slice(0, 28)
-      .map(([date, stats]) => {
-        const ratio = stats.total === 0 ? 100 : Math.round((stats.completed / stats.total) * 100);
+    const baseWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+
+    return Array.from({ length: 4 }, (_, offset) => {
+      const weekStart = subWeeks(baseWeekStart, offset);
+      const weekEnd = addDays(weekStart, 6);
+
+      const days = Array.from({ length: 7 }, (_, index) => {
+        const dayDate = addDays(weekStart, index);
+        const key = format(dayDate, "yyyy-MM-dd");
+        const stats = dailyMap.get(key);
+
         return {
-          date,
-          ratio,
-          totalSeconds: stats.totalSeconds,
-          completed: stats.completed,
-          total: stats.total,
+          date: key,
+          label: format(dayDate, "EEE"),
+          dayOfMonth: format(dayDate, "d MMM"),
+          completed: stats?.completed ?? 0,
+          total: stats?.total ?? 0,
+          totalSeconds: stats?.totalSeconds ?? 0,
+          sessions: stats?.sessions ?? [],
         };
       });
+
+      const weekSeconds = days.reduce((sum, d) => sum + d.totalSeconds, 0);
+      const weekCompleted = days.reduce((sum, d) => sum + d.completed, 0);
+      const weekTotal = days.reduce((sum, d) => sum + d.total, 0);
+
+      return {
+        key: format(weekStart, "yyyy-MM-dd"),
+        title: `${format(weekStart, "MMM d")} - ${format(weekEnd, "MMM d")}`,
+        weekSeconds,
+        weekCompleted,
+        weekTotal,
+        days,
+      };
+    });
   }, [history]);
 
-  const selectedSessions = useMemo(() => {
-    if (!history || !selectedDate) return [];
-    return history.sessions.filter((session) => session.created_at.slice(0, 10) === selectedDate);
-  }, [history, selectedDate]);
-
-  const weeklySummary = useMemo(() => {
-    const rows = [...dailyRows].slice(0, 7);
-    const totalSeconds = rows.reduce((sum, row) => sum + row.totalSeconds, 0);
-    const totalCompleted = rows.reduce((sum, row) => sum + row.completed, 0);
-    const totalTasks = rows.reduce((sum, row) => sum + row.total, 0);
-    const ratio = totalTasks === 0 ? 100 : Math.round((totalCompleted / totalTasks) * 100);
-    return { totalSeconds, totalCompleted, totalTasks, ratio };
-  }, [dailyRows]);
-
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       <h1 className="text-2xl font-bold">Calendar & History</h1>
       {loading ? <p className="text-sm text-slate-500">Loading history...</p> : null}
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Last 7 days</p>
-          <p className="mt-1 text-lg font-semibold">{formatDuration(weeklySummary.totalSeconds)}</p>
-          <p className="text-xs text-slate-500">Total focused time</p>
-        </article>
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Completion</p>
-          <p className="mt-1 text-lg font-semibold">{weeklySummary.totalCompleted}/{weeklySummary.totalTasks}</p>
-          <p className="text-xs text-slate-500">Completed sessions</p>
-        </article>
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Success ratio</p>
-          <p className="mt-1 text-lg font-semibold">{weeklySummary.ratio}%</p>
-          <p className="text-xs text-slate-500">Average weekly quality</p>
-        </article>
-      </div>
+      {weekSections.map((week) => (
+        <section key={week.key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">Week: {week.title}</h2>
+            <p className="text-xs text-slate-600">
+              {week.weekCompleted}/{week.weekTotal} completed | Logged {formatDuration(week.weekSeconds)}
+            </p>
+          </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {dailyRows.map((row) => (
-          <button
-            key={row.date}
-            type="button"
-            onClick={() => setSelectedDate(row.date)}
-            className={`rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm ${selectedDate === row.date ? "ring-2 ring-blue-500" : ""}`}
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900">{row.date}</h3>
-              <span className={`h-3 w-3 rounded-full ${getScoreColor(row.ratio)}`} />
-            </div>
-            <p className="mt-2 text-sm text-slate-600">Completion: {row.ratio}% ({row.completed}/{row.total})</p>
-            <p className="text-sm text-slate-600">Logged: {formatDuration(row.totalSeconds)}</p>
-          </button>
-        ))}
-      </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {week.days.map((day) => {
+              const ratio = day.total === 0 ? 100 : Math.round((day.completed / day.total) * 100);
 
-      {selectedDate ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-lg font-semibold">Day detail: {selectedDate}</h2>
-          <div className="mt-3 space-y-2">
-            {selectedSessions.length === 0 ? <p className="text-sm text-slate-500">No sessions found.</p> : null}
-            {selectedSessions.map((session) => (
-              <article key={session.id} className="rounded-lg border border-slate-100 p-3">
-                <p className="font-medium text-slate-900">{session.task?.title ?? "Untitled Task"}</p>
-                <p className="text-sm text-slate-600">{session.status} - {formatDuration(session.total_seconds ?? 0)}</p>
-              </article>
-            ))}
+              return (
+                <article key={day.date} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{day.label}</p>
+                      <p className="text-xs text-slate-600">{day.dayOfMonth}</p>
+                    </div>
+                    <span className={`h-3 w-3 rounded-full ${getScoreColor(ratio)}`} />
+                  </div>
+
+                  <p className="mt-2 text-xs text-slate-600">Completion: {ratio}% ({day.completed}/{day.total})</p>
+                  <p className="text-xs text-slate-600">Logged: {formatDuration(day.totalSeconds)}</p>
+
+                  <div className="mt-2 space-y-1">
+                    {day.sessions.length === 0 ? <p className="text-xs text-slate-400">No tasks</p> : null}
+                    {day.sessions.slice(0, 3).map((session) => (
+                      <div key={session.id} className="rounded border border-slate-200 bg-white px-2 py-1">
+                        <p className="truncate text-xs font-medium text-slate-800">{session.task?.title ?? "Untitled Task"}</p>
+                        <p className="text-[11px] text-slate-600">{session.status} - {formatDuration(session.total_seconds)}</p>
+                      </div>
+                    ))}
+                    {day.sessions.length > 3 ? <p className="text-[11px] text-slate-500">+{day.sessions.length - 3} more</p> : null}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
-      ) : null}
+      ))}
     </section>
   );
 }

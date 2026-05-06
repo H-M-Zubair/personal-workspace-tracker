@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CalendarDays, ListTodo, Settings, Timer } from "lucide-react";
+import { LayoutDashboard, CalendarDays, ListTodo, Settings, Timer, Pause, Play, Check } from "lucide-react";
 import LogoutButton from "@/components/layout/logout-button";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
 import { useTimerState } from "@/lib/context/timer-context";
 import { formatDuration } from "@/lib/utils/time";
@@ -18,7 +19,7 @@ const links = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { activeTimer } = useTimerState();
+  const { activeTimer, actionLoading, runTimerAction } = useTimerState();
 
   const remaining = activeTimer
     ? Math.max(0, activeTimer.plannedSeconds - activeTimer.elapsedSeconds)
@@ -53,6 +54,35 @@ export default function Sidebar() {
           <p className="text-xs font-semibold text-blue-700">Active timer</p>
           <p className="mt-1 text-sm font-semibold text-slate-900">{activeTimer.taskTitle}</p>
           <p className="text-xs text-slate-600">{activeTimer.status} - {formatDuration(remaining)}</p>
+          <div className="mt-2 flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={actionLoading || activeTimer.status !== "running"}
+              onClick={() => void runTimerAction("pause")}
+            >
+              <Pause className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={actionLoading || activeTimer.status !== "paused"}
+              onClick={() => void runTimerAction("resume")}
+            >
+              <Play className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={actionLoading || activeTimer.status === "completed"}
+              onClick={() => void runTimerAction("complete")}
+            >
+              <Check className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       ) : null}
 

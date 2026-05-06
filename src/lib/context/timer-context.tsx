@@ -16,7 +16,9 @@ export type ActiveTimer = {
 type TimerContextValue = {
   activeTimer: ActiveTimer | null;
   loading: boolean;
+  actionLoading: boolean;
   refreshActiveTimer: () => Promise<void>;
+  runTimerAction: (action: "pause" | "resume" | "complete") => Promise<void>;
 };
 
 const TimerContext = createContext<TimerContextValue | null>(null);
@@ -24,6 +26,7 @@ const TimerContext = createContext<TimerContextValue | null>(null);
 export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const refreshActiveTimer = useCallback(async () => {
     try {
@@ -91,9 +94,36 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshActiveTimer]);
 
+  const runTimerAction = useCallback(async (action: "pause" | "resume" | "complete") => {
+    if (!activeTimer) return;
+
+    try {
+      setActionLoading(true);
+      const response = await fetch("/api/timers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          taskId: activeTimer.taskId,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!payload.success) {
+        return;
+      }
+
+      await refreshActiveTimer();
+    } catch (error) {
+      console.error("[TimerContext] action", error);
+    } finally {
+      setActionLoading(false);
+    }
+  }, [activeTimer, refreshActiveTimer]);
+
   const value = useMemo(
-    () => ({ activeTimer, loading, refreshActiveTimer }),
-    [activeTimer, loading, refreshActiveTimer],
+    () => ({ activeTimer, loading, actionLoading, refreshActiveTimer, runTimerAction }),
+    [activeTimer, loading, actionLoading, refreshActiveTimer, runTimerAction],
   );
 
   return <TimerContext.Provider value={value}>{children}</TimerContext.Provider>;

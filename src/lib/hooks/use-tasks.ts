@@ -41,5 +41,16 @@ export function useTasks() {
     return () => window.clearTimeout(id);
   }, [fetchTasks]);
 
-  return { tasks, loading, refresh: fetchTasks };
+  const deleteTask = async (taskId: string) => {
+    const response = await fetch(`/api/tasks/${taskId}`, {
+      method: "DELETE",
+    });
+
+    const payload = await response.json();
+    if (payload.success) {
+      await fetchTasks();
+    }
+  };
+
+  return { tasks, loading, refresh: fetchTasks, deleteTask };
 }

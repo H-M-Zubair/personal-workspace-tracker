@@ -1,14 +1,51 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDuration } from "@/lib/utils/time";
 
 type TimerStatus = "idle" | "running" | "paused" | "completed";
+
+type TimerSessionResponse = {
+  id: string;
+  status: "running" | "paused" | "completed";
+  elapsedSeconds: number;
+};
 
 export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskId: string; taskName: string; plannedSeconds: number }) {
   const [status, setStatus] = useState<TimerStatus>("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [extraSeconds, setExtraSeconds] = useState(0);
+  const [syncing, setSyncing] = useState(true);
+
+  const syncFromServer = useCallback(async () => {
+    try {
+      setSyncing(true);
+      const response = await fetch(`/api/timers?taskId=${taskId}`, { cache: "no-store" });
+      const payload = await response.json();
+
+      if (!payload.success || !payload.data) {
+        setStatus("idle");
+        setElapsedSeconds(0);
+        return;
+      }
+
+      const session = payload.data as TimerSessionResponse;
+      setStatus(session.status);
+      setElapsedSeconds(session.elapsedSeconds ?? 0);
+    } catch (error) {
+      console.error("[TimerPanel] sync", error);
+    } finally {
+      setSyncing(false);
+    }
+  }, [taskId]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      void syncFromServer();
+    }, 0);
+
+    return () => window.clearTimeout(id);
+  }, [syncFromServer]);
 
   useEffect(() => {
     if (status !== "running") return;
@@ -20,22 +57,39 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
     return () => window.clearInterval(interval);
   }, [status]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void syncFromServer();
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [syncFromServer]);
+
   const totalPlanned = plannedSeconds + extraSeconds;
   const secondsLeft = totalPlanned - elapsedSeconds;
   const isOvertime = secondsLeft < 0;
   const progress = totalPlanned <= 0 ? 0 : Math.min(100, Math.round((elapsedSeconds / totalPlanned) * 100));
 
   const label = useMemo(() => {
+    if (syncing) return "Syncing...";
     if (status === "completed") return "Completed";
+    if (status === "paused") return "Paused";
     return isOvertime ? "Overtime" : "Remaining";
-  }, [isOvertime, status]);
+  }, [isOvertime, status, syncing]);
 
   const postAction = async (action: "start" | "pause" | "resume" | "complete") => {
-    await fetch("/api/timers", {
+    const response = await fetch("/api/timers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, taskId, totalSeconds: Math.max(0, elapsedSeconds) }),
+      body: JSON.stringify({ action, taskId }),
     });
+
+    const payload = await response.json();
+    if (!payload.success) {
+      return;
+    }
+
+    await syncFromServer();
   };
 
   const onStart = async () => {
@@ -57,7 +111,7 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
   };
 
   const onDone = async () => {
-    if (status === "completed") return;
+    if (status === "completed" || status === "idle") return;
     setStatus("completed");
     await postAction("complete");
   };
@@ -78,11 +132,11 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" onClick={onStart} disabled={status !== "idle"} className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white disabled:opacity-50">Start</button>
-        <button type="button" onClick={onPause} disabled={status !== "running"} className="rounded-lg bg-amber-500 px-3 py-2 text-sm text-white disabled:opacity-50">Pause</button>
-        <button type="button" onClick={onResume} disabled={status !== "paused"} className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50">Resume</button>
-        <button type="button" onClick={onAddFive} disabled={status === "completed"} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-50">Add 5 min</button>
-        <button type="button" onClick={onDone} disabled={status === "completed"} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50">Done</button>
+        <button type="button" onClick={onStart} disabled={status !== "idle" || syncing} className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white disabled:opacity-50">Start</button>
+        <button type="button" onClick={onPause} disabled={status !== "running" || syncing} className="rounded-lg bg-amber-500 px-3 py-2 text-sm text-white disabled:opacity-50">Pause</button>
+        <button type="button" onClick={onResume} disabled={status !== "paused" || syncing} className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50">Resume</button>
+        <button type="button" onClick={onAddFive} disabled={status === "completed" || syncing} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-50">Add 5 min</button>
+        <button type="button" onClick={onDone} disabled={(status !== "running" && status !== "paused") || syncing} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50">Done</button>
       </div>
     </article>
   );

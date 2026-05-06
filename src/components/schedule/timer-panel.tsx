@@ -18,6 +18,7 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [extraSeconds, setExtraSeconds] = useState(0);
   const [syncing, setSyncing] = useState(true);
+  const [actionError, setActionError] = useState("");
 
   const syncFromServer = useCallback(async () => {
     try {
@@ -61,6 +62,7 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
 
   const effectiveStatus = activeTimer?.taskId === taskId ? activeTimer.status : status;
   const effectiveElapsed = activeTimer?.taskId === taskId ? activeTimer.elapsedSeconds : elapsedSeconds;
+  const hasOtherRunningTask = activeTimer?.status === "running" && activeTimer.taskId !== taskId;
 
   const totalPlanned = plannedSeconds + extraSeconds;
   const secondsLeft = totalPlanned - effectiveElapsed;
@@ -75,6 +77,7 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
   }, [effectiveStatus, isOvertime, syncing]);
 
   const postAction = async (action: "start" | "pause" | "resume" | "complete") => {
+    setActionError("");
     const response = await fetch("/api/timers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -83,6 +86,7 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
 
     const payload = await response.json();
     if (!payload.success) {
+      setActionError(payload.error ?? "Unable to update timer.");
       return;
     }
 
@@ -129,12 +133,16 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" onClick={onStart} disabled={effectiveStatus !== "idle" || syncing} className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white disabled:opacity-50">Start</button>
+        <button type="button" onClick={onStart} disabled={effectiveStatus !== "idle" || syncing || hasOtherRunningTask} className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white disabled:opacity-50">Start</button>
         <button type="button" onClick={onPause} disabled={effectiveStatus !== "running" || syncing} className="rounded-lg bg-amber-500 px-3 py-2 text-sm text-white disabled:opacity-50">Pause</button>
         <button type="button" onClick={onResume} disabled={effectiveStatus !== "paused" || syncing} className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50">Resume</button>
         <button type="button" onClick={onAddFive} disabled={effectiveStatus === "completed" || syncing} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-50">Add 5 min</button>
         <button type="button" onClick={onDone} disabled={(effectiveStatus !== "running" && effectiveStatus !== "paused") || syncing} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50">Done</button>
       </div>
+      {hasOtherRunningTask ? (
+        <p className="mt-2 text-xs text-amber-700">Another task is running. Pause or stop it first to switch.</p>
+      ) : null}
+      {actionError ? <p className="mt-2 text-xs text-rose-700">{actionError}</p> : null}
     </article>
   );
 }

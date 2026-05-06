@@ -50,7 +50,7 @@ export default function Sidebar() {
 
       {activeTimer ? (
         <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
-          <p className="text-xs font-semibold text-blue-700">Running task</p>
+          <p className="text-xs font-semibold text-blue-700">Active timer</p>
           <p className="mt-1 text-sm font-semibold text-slate-900">{activeTimer.taskTitle}</p>
           <p className="text-xs text-slate-600">{activeTimer.status} - {formatDuration(remaining)}</p>
         </div>

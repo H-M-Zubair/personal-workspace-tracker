@@ -114,6 +114,26 @@ export async function POST(request: Request) {
   }
 
   if (parsed.data.action === "start") {
+    const { data: runningSession, error: runningError } = await supabase
+      .from("timer_sessions")
+      .select("id, task_id")
+      .eq("user_id", user.id)
+      .eq("status", "running")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string; task_id: string }>();
+
+    if (runningError) {
+      return NextResponse.json({ success: false, error: "Failed to validate running timer" }, { status: 500 });
+    }
+
+    if (runningSession && runningSession.task_id !== taskId) {
+      return NextResponse.json(
+        { success: false, error: "Pause or complete the currently running task before starting another." },
+        { status: 409 },
+      );
+    }
+
     if (activeSession.data) {
       return NextResponse.json({
         success: true,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import TimerPanel from "@/components/schedule/timer-panel";
 import { useAttendance } from "@/lib/hooks/use-attendance";
 import { useTasks } from "@/lib/hooks/use-tasks";
@@ -20,17 +20,24 @@ export default function TodayPage() {
     () => tasks.filter((task) => task.work_days?.includes(todayLabel)),
     [tasks, todayLabel],
   );
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const runningTaskId = activeTimer?.status === "running" ? activeTimer.taskId : null;
 
   const current = useMemo(() => {
     if (!todaysTasks.length) return null;
 
-    if (activeTimer) {
-      const matched = todaysTasks.find((task) => task.id === activeTimer.taskId);
+    if (runningTaskId) {
+      const matched = todaysTasks.find((task) => task.id === runningTaskId);
+      if (matched) return matched;
+    }
+
+    if (selectedTaskId) {
+      const matched = todaysTasks.find((task) => task.id === selectedTaskId);
       if (matched) return matched;
     }
 
     return todaysTasks[0];
-  }, [activeTimer, todaysTasks]);
+  }, [runningTaskId, selectedTaskId, todaysTasks]);
 
   return (
     <section className="space-y-4">
@@ -47,12 +54,33 @@ export default function TodayPage() {
 
       {tasksLoading ? <p className="text-sm text-slate-500">Loading tasks...</p> : null}
       {current ? (
-        <TimerPanel
-          key={`${current.id}-${current.planned_hours}-${current.planned_minutes}`}
-          taskId={current.id}
-          taskName={current.title}
-          plannedSeconds={(current.planned_hours * 3600) + (current.planned_minutes * 60)}
-        />
+        <div className="space-y-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <label className="mb-1 block text-xs font-medium text-slate-600">Task switcher</label>
+            <select
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={current.id}
+              onChange={(event) => setSelectedTaskId(event.target.value)}
+              disabled={Boolean(runningTaskId)}
+            >
+              {todaysTasks.map((task) => (
+                <option key={task.id} value={task.id}>
+                  {task.title}
+                </option>
+              ))}
+            </select>
+            {runningTaskId ? (
+              <p className="mt-2 text-xs text-amber-700">Pause or stop the running task to switch.</p>
+            ) : null}
+          </div>
+
+          <TimerPanel
+            key={`${current.id}-${current.planned_hours}-${current.planned_minutes}`}
+            taskId={current.id}
+            taskName={current.title}
+            plannedSeconds={(current.planned_hours * 3600) + (current.planned_minutes * 60)}
+          />
+        </div>
       ) : (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">No tasks scheduled for {todayLabel} yet.</p>
       )}

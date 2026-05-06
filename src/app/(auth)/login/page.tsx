@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { createSupabaseClient } from "@/lib/supabase/client";
 
 type LoginFields = {
   email: string;
@@ -9,10 +12,29 @@ type LoginFields = {
 };
 
 export default function LoginPage() {
+  const router = useRouter();
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const { register, handleSubmit } = useForm<LoginFields>();
 
-  const onSubmit = (values: LoginFields) => {
-    console.log("[LoginForm] submit", values.email);
+  const onSubmit = async (values: LoginFields) => {
+    setLoading(true);
+    setError("");
+
+    const supabase = createSupabaseClient();
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: values.email,
+      password: values.password,
+    });
+
+    if (signInError) {
+      setError(signInError.message);
+      setLoading(false);
+      return;
+    }
+
+    router.replace("/");
+    router.refresh();
   };
 
   return (
@@ -20,7 +42,8 @@ export default function LoginPage() {
       <h1 className="text-2xl font-semibold text-slate-900">Welcome back</h1>
       <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Email" type="email" {...register("email", { required: true })} />
       <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Password" type="password" {...register("password", { required: true })} />
-      <button className="w-full rounded-lg bg-blue-600 px-3 py-2 text-white" type="submit">Sign in</button>
+      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+      <button className="w-full rounded-lg bg-blue-600 px-3 py-2 text-white disabled:opacity-60" disabled={loading} type="submit">{loading ? "Signing in..." : "Sign in"}</button>
       <p className="text-sm text-slate-600">No account? <Link className="text-blue-700" href="/register">Create one</Link></p>
     </form>
   );

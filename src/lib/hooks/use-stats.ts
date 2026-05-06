@@ -2,12 +2,29 @@
 
 import { useEffect, useState } from "react";
 
-interface DashboardStats {
+type RangeKey = "weekly" | "monthly" | "yearly";
+
+interface RangeMetrics {
   totalSeconds: number;
-  tasksCompleted: number;
   totalTasks: number;
+  tasksCompleted: number;
   successRatio: number;
-  streak: number;
+}
+
+interface DashboardStats {
+  today: {
+    totalSeconds: number;
+    tasksCompleted: number;
+    totalTasks: number;
+    successRatio: number;
+    streak: number;
+  };
+  ranges: Record<RangeKey, RangeMetrics>;
+  charts: {
+    weeklyHours: Array<{ label: string; hours: number }>;
+    completionTrend: Array<{ label: string; ratio: number }>;
+    monthlyHours: Array<{ label: string; hours: number }>;
+  };
 }
 
 export function useStats() {

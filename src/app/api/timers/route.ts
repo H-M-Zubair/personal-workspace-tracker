@@ -37,10 +37,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, data }, { status: 201 });
   }
 
+  const nextStatus = parsed.data.action === "complete" ? "completed" : parsed.data.action === "resume" ? "running" : "paused";
+
   const { data, error } = await supabase
     .from("timer_sessions")
     .update({
-      status: parsed.data.action === "complete" ? "completed" : parsed.data.action,
+      status: nextStatus,
       total_seconds: parsed.data.totalSeconds ?? 0,
       ended_at: parsed.data.action === "complete" ? now : null,
       paused_at: parsed.data.action === "pause" ? now : null,
@@ -48,8 +50,9 @@ export async function POST(request: Request) {
     })
     .eq("task_id", parsed.data.taskId)
     .eq("user_id", user.id)
-    .eq("status", "running")
-    .select("*");
+    .in("status", ["running", "paused"])
+    .select("*")
+    .limit(1);
 
   if (error) {
     return NextResponse.json({ success: false, error: "Failed to update timer" }, { status: 500 });

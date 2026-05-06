@@ -11,6 +11,20 @@ type LoginFields = {
   password: string;
 };
 
+function mapAuthError(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("invalid login credentials")) {
+    return "Invalid email or password. If you just registered, verify your email first.";
+  }
+
+  if (normalized.includes("email not confirmed")) {
+    return "Please verify your email before logging in.";
+  }
+
+  return message;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState("");
@@ -23,12 +37,12 @@ export default function LoginPage() {
 
     const supabase = createSupabaseClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: values.email,
+      email: values.email.trim().toLowerCase(),
       password: values.password,
     });
 
     if (signInError) {
-      setError(signInError.message);
+      setError(mapAuthError(signInError.message));
       setLoading(false);
       return;
     }

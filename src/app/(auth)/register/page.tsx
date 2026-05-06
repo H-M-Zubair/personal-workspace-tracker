@@ -22,10 +22,11 @@ export default function RegisterPage() {
   const onSubmit = async (values: RegisterFields) => {
     setLoading(true);
     setError("");
+    setMessage("");
 
     const supabase = createSupabaseClient();
-    const { error: signUpError } = await supabase.auth.signUp({
-      email: values.email,
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: values.email.trim().toLowerCase(),
       password: values.password,
       options: {
         data: {
@@ -40,9 +41,20 @@ export default function RegisterPage() {
       return;
     }
 
-    setMessage("Account created. Please verify your email, then sign in.");
+    if (!data.user) {
+      setError("Could not create account. Please try again.");
+      setLoading(false);
+      return;
+    }
+
+    if (data.session) {
+      router.replace("/");
+      router.refresh();
+      return;
+    }
+
+    setMessage("Account created. Please check your email inbox and verify, then log in.");
     setLoading(false);
-    router.push("/login");
   };
 
   return (
@@ -54,7 +66,18 @@ export default function RegisterPage() {
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {message ? <p className="text-sm text-emerald-600">{message}</p> : null}
       <button className="w-full rounded-lg bg-blue-600 px-3 py-2 text-white disabled:opacity-60" disabled={loading} type="submit">{loading ? "Creating..." : "Sign up"}</button>
-      <p className="text-sm text-slate-600">Already registered? <Link className="text-blue-700" href="/login">Sign in</Link></p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-slate-600">Already registered? <Link className="text-blue-700" href="/login">Sign in</Link></p>
+        {message ? (
+          <button
+            type="button"
+            className="text-sm font-medium text-blue-700"
+            onClick={() => router.push("/login")}
+          >
+            Go to login
+          </button>
+        ) : null}
+      </div>
     </form>
   );
 }

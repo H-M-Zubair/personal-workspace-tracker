@@ -73,3 +73,14 @@ create trigger tasks_set_updated_at
 before update on public.tasks
 for each row
 execute function public.set_updated_at();
+
+-- Grants required in addition to RLS policies.
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on table public.tasks to authenticated;
+grant select, insert, update, delete on table public.attendance to authenticated;
+grant select, insert, update, delete on table public.timer_sessions to authenticated;
+
+-- Optional read-only access for anon (no writes).
+grant select on table public.tasks to anon;
+grant select on table public.attendance to anon;
+grant select on table public.timer_sessions to anon;

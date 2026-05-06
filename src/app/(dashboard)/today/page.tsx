@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import TimerPanel from "@/components/schedule/timer-panel";
 import { useAttendance } from "@/lib/hooks/use-attendance";
 import { useTasks } from "@/lib/hooks/use-tasks";
+import { useTimerState } from "@/lib/context/timer-context";
 import { formatClock } from "@/lib/utils/time";
 
 const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -11,6 +12,7 @@ const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function TodayPage() {
   const { tasks, loading: tasksLoading } = useTasks();
   const { attendance, loading: attendanceLoading, checkIn } = useAttendance();
+  const { activeTimer } = useTimerState();
 
   const todayLabel = dayLabels[new Date().getDay()] ?? "Mon";
 
@@ -19,7 +21,16 @@ export default function TodayPage() {
     [tasks, todayLabel],
   );
 
-  const current = todaysTasks[0];
+  const current = useMemo(() => {
+    if (!todaysTasks.length) return null;
+
+    if (activeTimer) {
+      const matched = todaysTasks.find((task) => task.id === activeTimer.taskId);
+      if (matched) return matched;
+    }
+
+    return todaysTasks[0];
+  }, [activeTimer, todaysTasks]);
 
   return (
     <section className="space-y-4">
@@ -48,12 +59,17 @@ export default function TodayPage() {
 
       {todaysTasks.length > 0 ? (
         <div className="space-y-2">
-          {todaysTasks.map((task) => (
-            <article key={task.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h3 className="font-semibold text-slate-900">{task.title}</h3>
-              <p className="text-sm text-slate-600">Planned {task.planned_hours}h {task.planned_minutes}m</p>
-            </article>
-          ))}
+          {todaysTasks.map((task) => {
+            const isActive = activeTimer?.taskId === task.id;
+
+            return (
+              <article key={task.id} className={`rounded-xl border bg-white p-4 shadow-sm ${isActive ? "border-blue-400" : "border-slate-200"}`}>
+                <h3 className="font-semibold text-slate-900">{task.title}</h3>
+                <p className="text-sm text-slate-600">Planned {task.planned_hours}h {task.planned_minutes}m</p>
+                {isActive ? <p className="mt-1 text-xs font-medium text-blue-700">Active timer task</p> : null}
+              </article>
+            );
+          })}
         </div>
       ) : null}
     </section>

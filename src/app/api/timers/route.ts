@@ -13,6 +13,11 @@ type TimerSession = {
   total_seconds: number | null;
   status: "running" | "paused" | "completed";
   created_at: string;
+  task?: {
+    title?: string;
+    planned_hours?: number;
+    planned_minutes?: number;
+  } | null;
 };
 
 function getElapsedSeconds(session: TimerSession) {
@@ -34,7 +39,7 @@ async function getActiveSessionForTask(
 ) {
   const { data, error } = await supabase
     .from("timer_sessions")
-    .select("*")
+    .select("*, task:tasks(title, planned_hours, planned_minutes)")
     .eq("user_id", userId)
     .eq("task_id", taskId)
     .in("status", ["running", "paused"])
@@ -57,7 +62,7 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("timer_sessions")
-    .select("*")
+    .select("*, task:tasks(title, planned_hours, planned_minutes)")
     .eq("user_id", user.id)
     .in("status", ["running", "paused"])
     .order("created_at", { ascending: false })
@@ -129,7 +134,7 @@ export async function POST(request: Request) {
         total_seconds: 0,
         status: "running",
       })
-      .select("*")
+      .select("*, task:tasks(title, planned_hours, planned_minutes)")
       .single<TimerSession>();
 
     if (error || !data) {
@@ -162,7 +167,7 @@ export async function POST(request: Request) {
       })
       .eq("id", current.id)
       .eq("user_id", user.id)
-      .select("*")
+      .select("*, task:tasks(title, planned_hours, planned_minutes)")
       .single<TimerSession>();
 
     if (error || !data) {
@@ -182,7 +187,7 @@ export async function POST(request: Request) {
       })
       .eq("id", current.id)
       .eq("user_id", user.id)
-      .select("*")
+      .select("*, task:tasks(title, planned_hours, planned_minutes)")
       .single<TimerSession>();
 
     if (error || !data) {
@@ -203,7 +208,7 @@ export async function POST(request: Request) {
     })
     .eq("id", current.id)
     .eq("user_id", user.id)
-    .select("*")
+    .select("*, task:tasks(title, planned_hours, planned_minutes)")
     .single<TimerSession>();
 
   if (error || !data) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTimerState } from "@/lib/context/timer-context";
 import { formatDuration } from "@/lib/utils/time";
 
 type TimerStatus = "idle" | "running" | "paused" | "completed";
@@ -12,6 +13,7 @@ type TimerSessionResponse = {
 };
 
 export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskId: string; taskName: string; plannedSeconds: number }) {
+  const { activeTimer, refreshActiveTimer } = useTimerState();
   const [status, setStatus] = useState<TimerStatus>("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [extraSeconds, setExtraSeconds] = useState(0);
@@ -57,49 +59,20 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
     return () => window.clearInterval(interval);
   }, [status]);
 
-  useEffect(() => {
-    const onFocus = () => {
-      void syncFromServer();
-    };
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        void syncFromServer();
-      }
-    };
-
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [syncFromServer]);
-
-  useEffect(() => {
-    if (status !== "running") return;
-
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        void syncFromServer();
-      }
-    }, 60000);
-
-    return () => window.clearInterval(interval);
-  }, [status, syncFromServer]);
+  const effectiveStatus = activeTimer?.taskId === taskId ? activeTimer.status : status;
+  const effectiveElapsed = activeTimer?.taskId === taskId ? activeTimer.elapsedSeconds : elapsedSeconds;
 
   const totalPlanned = plannedSeconds + extraSeconds;
-  const secondsLeft = totalPlanned - elapsedSeconds;
+  const secondsLeft = totalPlanned - effectiveElapsed;
   const isOvertime = secondsLeft < 0;
-  const progress = totalPlanned <= 0 ? 0 : Math.min(100, Math.round((elapsedSeconds / totalPlanned) * 100));
+  const progress = totalPlanned <= 0 ? 0 : Math.min(100, Math.round((effectiveElapsed / totalPlanned) * 100));
 
   const label = useMemo(() => {
     if (syncing) return "Syncing...";
-    if (status === "completed") return "Completed";
-    if (status === "paused") return "Paused";
+    if (effectiveStatus === "completed") return "Completed";
+    if (effectiveStatus === "paused") return "Paused";
     return isOvertime ? "Overtime" : "Remaining";
-  }, [isOvertime, status, syncing]);
+  }, [effectiveStatus, isOvertime, syncing]);
 
   const postAction = async (action: "start" | "pause" | "resume" | "complete") => {
     const response = await fetch("/api/timers", {
@@ -113,29 +86,29 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
       return;
     }
 
-    await syncFromServer();
+    await Promise.all([syncFromServer(), refreshActiveTimer()]);
   };
 
   const onStart = async () => {
-    if (status !== "idle") return;
+    if (effectiveStatus !== "idle") return;
     setStatus("running");
     await postAction("start");
   };
 
   const onPause = async () => {
-    if (status !== "running") return;
+    if (effectiveStatus !== "running") return;
     setStatus("paused");
     await postAction("pause");
   };
 
   const onResume = async () => {
-    if (status !== "paused") return;
+    if (effectiveStatus !== "paused") return;
     setStatus("running");
     await postAction("resume");
   };
 
   const onDone = async () => {
-    if (status === "completed" || status === "idle") return;
+    if (effectiveStatus === "completed" || effectiveStatus === "idle") return;
     setStatus("completed");
     await postAction("complete");
   };
@@ -156,11 +129,11 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" onClick={onStart} disabled={status !== "idle" || syncing} className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white disabled:opacity-50">Start</button>
-        <button type="button" onClick={onPause} disabled={status !== "running" || syncing} className="rounded-lg bg-amber-500 px-3 py-2 text-sm text-white disabled:opacity-50">Pause</button>
-        <button type="button" onClick={onResume} disabled={status !== "paused" || syncing} className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50">Resume</button>
-        <button type="button" onClick={onAddFive} disabled={status === "completed" || syncing} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-50">Add 5 min</button>
-        <button type="button" onClick={onDone} disabled={(status !== "running" && status !== "paused") || syncing} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50">Done</button>
+        <button type="button" onClick={onStart} disabled={effectiveStatus !== "idle" || syncing} className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white disabled:opacity-50">Start</button>
+        <button type="button" onClick={onPause} disabled={effectiveStatus !== "running" || syncing} className="rounded-lg bg-amber-500 px-3 py-2 text-sm text-white disabled:opacity-50">Pause</button>
+        <button type="button" onClick={onResume} disabled={effectiveStatus !== "paused" || syncing} className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50">Resume</button>
+        <button type="button" onClick={onAddFive} disabled={effectiveStatus === "completed" || syncing} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-50">Add 5 min</button>
+        <button type="button" onClick={onDone} disabled={(effectiveStatus !== "running" && effectiveStatus !== "paused") || syncing} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50">Done</button>
       </div>
     </article>
   );

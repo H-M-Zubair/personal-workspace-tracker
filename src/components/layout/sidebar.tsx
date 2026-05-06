@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { LayoutDashboard, CalendarDays, ListTodo, Settings, Timer } from "lucide-react";
 import LogoutButton from "@/components/layout/logout-button";
 import { cn } from "@/lib/utils/cn";
+import { useTimerState } from "@/lib/context/timer-context";
+import { formatDuration } from "@/lib/utils/time";
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -16,6 +18,11 @@ const links = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { activeTimer } = useTimerState();
+
+  const remaining = activeTimer
+    ? Math.max(0, activeTimer.plannedSeconds - activeTimer.elapsedSeconds)
+    : 0;
 
   return (
     <aside className="w-full border-b border-slate-200 bg-white p-4 md:w-64 md:border-b-0 md:border-r">
@@ -40,6 +47,15 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      {activeTimer ? (
+        <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <p className="text-xs font-semibold text-blue-700">Running task</p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">{activeTimer.taskTitle}</p>
+          <p className="text-xs text-slate-600">{activeTimer.status} - {formatDuration(remaining)}</p>
+        </div>
+      ) : null}
+
       <div className="mt-4">
         <LogoutButton />
       </div>

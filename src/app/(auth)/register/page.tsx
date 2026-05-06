@@ -47,13 +47,12 @@ export default function RegisterPage() {
       return;
     }
 
+    // Enforce explicit login after signup for predictable auth flow.
     if (data.session) {
-      router.replace("/");
-      router.refresh();
-      return;
+      await supabase.auth.signOut();
     }
 
-    setMessage("Account created. Please check your email inbox and verify, then log in.");
+    setMessage("Account created. Please verify your email if required, then log in.");
     setLoading(false);
   };
 

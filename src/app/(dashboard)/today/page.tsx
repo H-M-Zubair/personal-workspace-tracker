@@ -37,6 +37,7 @@ export default function TodayPage() {
       {tasksLoading ? <p className="text-sm text-slate-500">Loading tasks...</p> : null}
       {current ? (
         <TimerPanel
+          key={`${current.id}-${current.planned_hours}-${current.planned_minutes}`}
           taskId={current.id}
           taskName={current.title}
           plannedSeconds={(current.planned_hours * 3600) + (current.planned_minutes * 60)}

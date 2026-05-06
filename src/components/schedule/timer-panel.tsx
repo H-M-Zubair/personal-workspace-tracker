@@ -3,59 +3,86 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatDuration } from "@/lib/utils/time";
 
+type TimerStatus = "idle" | "running" | "paused" | "completed";
+
 export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskId: string; taskName: string; plannedSeconds: number }) {
-  const [secondsLeft, setSecondsLeft] = useState(plannedSeconds);
-  const [running, setRunning] = useState(false);
-
-  const label = useMemo(() => (secondsLeft <= 0 ? "Overtime" : "Remaining"), [secondsLeft]);
-
-  const start = async () => {
-    setRunning(true);
-    await fetch("/api/timers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "start", taskId }),
-    });
-  };
-
-  const pause = async () => {
-    setRunning(false);
-    await fetch("/api/timers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "pause", taskId, totalSeconds: Math.max(0, plannedSeconds - secondsLeft) }),
-    });
-  };
-
-  const complete = async () => {
-    setRunning(false);
-    await fetch("/api/timers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "complete", taskId, totalSeconds: Math.max(0, plannedSeconds - secondsLeft) }),
-    });
-  };
+  const [status, setStatus] = useState<TimerStatus>("idle");
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [extraSeconds, setExtraSeconds] = useState(0);
 
   useEffect(() => {
-    if (!running) return;
+    if (status !== "running") return;
 
     const interval = window.setInterval(() => {
-      setSecondsLeft((value) => value - 1);
+      setElapsedSeconds((value) => value + 1);
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [running]);
+  }, [status]);
+
+  const totalPlanned = plannedSeconds + extraSeconds;
+  const secondsLeft = totalPlanned - elapsedSeconds;
+  const isOvertime = secondsLeft < 0;
+  const progress = totalPlanned <= 0 ? 0 : Math.min(100, Math.round((elapsedSeconds / totalPlanned) * 100));
+
+  const label = useMemo(() => {
+    if (status === "completed") return "Completed";
+    return isOvertime ? "Overtime" : "Remaining";
+  }, [isOvertime, status]);
+
+  const postAction = async (action: "start" | "pause" | "resume" | "complete") => {
+    await fetch("/api/timers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, taskId, totalSeconds: Math.max(0, elapsedSeconds) }),
+    });
+  };
+
+  const onStart = async () => {
+    if (status !== "idle") return;
+    setStatus("running");
+    await postAction("start");
+  };
+
+  const onPause = async () => {
+    if (status !== "running") return;
+    setStatus("paused");
+    await postAction("pause");
+  };
+
+  const onResume = async () => {
+    if (status !== "paused") return;
+    setStatus("running");
+    await postAction("resume");
+  };
+
+  const onDone = async () => {
+    if (status === "completed") return;
+    setStatus("completed");
+    await postAction("complete");
+  };
+
+  const onAddFive = () => {
+    setExtraSeconds((value) => value + 300);
+  };
 
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-sm text-slate-500">Active Timer</p>
       <h3 className="mt-1 text-lg font-semibold">{taskName}</h3>
-      <p className={`mt-3 font-mono text-3xl ${secondsLeft <= 0 ? "text-rose-600" : "text-blue-700"}`}>{formatDuration(Math.abs(secondsLeft))}</p>
+      <p className={`mt-3 font-mono text-3xl ${isOvertime ? "text-rose-600" : "text-blue-700"}`}>{formatDuration(Math.abs(secondsLeft))}</p>
       <p className="text-xs text-slate-500">{label}</p>
-      <div className="mt-4 flex gap-2">
-        <button type="button" onClick={start} className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white">Start</button>
-        <button type="button" onClick={pause} className="rounded-lg bg-amber-500 px-3 py-2 text-sm text-white">Pause</button>
-        <button type="button" onClick={complete} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white">Done</button>
+
+      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full bg-blue-600 transition-all" style={{ width: `${progress}%` }} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" onClick={onStart} disabled={status !== "idle"} className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white disabled:opacity-50">Start</button>
+        <button type="button" onClick={onPause} disabled={status !== "running"} className="rounded-lg bg-amber-500 px-3 py-2 text-sm text-white disabled:opacity-50">Pause</button>
+        <button type="button" onClick={onResume} disabled={status !== "paused"} className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50">Resume</button>
+        <button type="button" onClick={onAddFive} disabled={status === "completed"} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-50">Add 5 min</button>
+        <button type="button" onClick={onDone} disabled={status === "completed"} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50">Done</button>
       </div>
     </article>
   );

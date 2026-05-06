@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import {
   Bar,
   BarChart,
@@ -15,143 +15,214 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { TrendingUp } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useStats } from "@/lib/hooks/use-stats";
 import { getTodayLabel } from "@/lib/utils/date";
 import { formatDuration } from "@/lib/utils/time";
 
 type RangeKey = "weekly" | "monthly" | "yearly";
 
+function StatsCards({
+  range,
+  totalSeconds,
+  completed,
+  totalTasks,
+  success,
+  streak,
+}: {
+  range: RangeKey;
+  totalSeconds: number;
+  completed: number;
+  totalTasks: number;
+  success: number;
+  streak: number;
+}) {
+  const cards = [
+    { label: "Hours logged today", value: formatDuration(totalSeconds) },
+    { label: `${range[0].toUpperCase()}${range.slice(1)} completed`, value: `${completed}/${totalTasks}` },
+    { label: `${range[0].toUpperCase()}${range.slice(1)} success`, value: `${success}%` },
+    { label: "Current streak", value: `${streak} days` },
+  ];
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {cards.map((card) => (
+        <Card key={card.label}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-slate-500">{card.label}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold text-slate-900">{card.value}</p>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { stats, loading } = useStats();
-  const [range, setRange] = useState<RangeKey>("weekly");
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
     () => false,
   );
 
-  const rangeStats = stats?.ranges[range];
+  const rangeData = useMemo(() => {
+    if (!stats) return null;
 
-  const cards = useMemo(
-    () => [
-      { label: "Hours logged today", value: stats ? formatDuration(stats.today.totalSeconds) : "--" },
-      {
-        label: `${range[0].toUpperCase()}${range.slice(1)} completed`,
-        value: stats ? `${rangeStats?.tasksCompleted ?? 0}/${rangeStats?.totalTasks ?? 0}` : "--",
-      },
-      { label: `${range[0].toUpperCase()}${range.slice(1)} success`, value: stats ? `${rangeStats?.successRatio ?? 0}%` : "--" },
-      { label: "Current streak", value: stats ? `${stats.today.streak} days` : "--" },
-    ],
-    [range, rangeStats, stats],
-  );
+    return {
+      weekly: stats.ranges.weekly,
+      monthly: stats.ranges.monthly,
+      yearly: stats.ranges.yearly,
+    };
+  }, [stats]);
 
-  const gaugeData = [{ name: "Success", value: rangeStats?.successRatio ?? 0, fill: "#10B981" }];
+  const renderCharts = (range: RangeKey) => {
+    if (!stats || !rangeData) return null;
+
+    const rangeStats = rangeData[range];
+    const gaugeData = [{ name: "Success", value: rangeStats.successRatio, fill: "#10B981" }];
+
+    return (
+      <>
+        <StatsCards
+          range={range}
+          totalSeconds={stats.today.totalSeconds}
+          completed={rangeStats.tasksCompleted}
+          totalTasks={rangeStats.totalTasks}
+          success={rangeStats.successRatio}
+          streak={stats.today.streak}
+        />
+
+        <div className="grid gap-4 xl:grid-cols-3">
+          <Card className="xl:col-span-2">
+            <CardHeader>
+              <CardTitle>Weekly hours breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64 w-full">
+                {!mounted ? <Skeleton className="h-full w-full" /> : null}
+                {mounted ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stats.charts.weeklyHours}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="label" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="hours" fill="#3B82F6" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Success ratio gauge</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64 w-full">
+                {!mounted ? <Skeleton className="h-full w-full" /> : null}
+                {mounted ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadialBarChart cx="50%" cy="50%" innerRadius="60%" outerRadius="90%" barSize={20} data={gaugeData} startAngle={180} endAngle={0}>
+                      <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+                      <RadialBar background dataKey="value" cornerRadius={10} />
+                      <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="fill-slate-900 text-xl font-semibold">
+                        {`${rangeStats.successRatio}%`}
+                      </text>
+                    </RadialBarChart>
+                  </ResponsiveContainer>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Task completion trend (last 7 days)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64 w-full">
+              {!mounted ? <Skeleton className="h-full w-full" /> : null}
+              {mounted ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={stats.charts.completionTrend}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="label" />
+                    <YAxis domain={[0, 100]} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="ratio" stroke="#8B5CF6" strokeWidth={3} dot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Monthly hours trend (12 months)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64 w-full">
+              {!mounted ? <Skeleton className="h-full w-full" /> : null}
+              {mounted ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats.charts.monthlyHours}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="label" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="hours" fill="#6366F1" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      </>
+    );
+  };
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-slate-600">{getTodayLabel()}</p>
         </div>
-        <div className="flex rounded-lg border border-slate-200 bg-white p-1">
-          {(["weekly", "monthly", "yearly"] as const).map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setRange(key)}
-              className={`rounded-md px-3 py-1.5 text-sm ${range === key ? "bg-blue-600 text-white" : "text-slate-700"}`}
-            >
-              {key[0].toUpperCase() + key.slice(1)}
-            </button>
-          ))}
-        </div>
+        <Badge variant="secondary" className="gap-1">
+          <TrendingUp className="h-3.5 w-3.5" /> Insights Ready
+        </Badge>
       </div>
 
-      {loading ? <p className="text-sm text-slate-500">Loading stats...</p> : null}
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {cards.map((card) => (
-          <article key={card.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-sm text-slate-500">{card.label}</p>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{card.value}</p>
-          </article>
-        ))}
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-3">
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Weekly hours breakdown</h2>
-          <div className="h-64 w-full">
-            {!mounted ? <div className="h-full w-full animate-pulse rounded bg-slate-100" /> : null}
-            {mounted ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats?.charts.weeklyHours ?? []}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="label" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="hours" fill="#3B82F6" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            ) : null}
-          </div>
-        </article>
-
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Success ratio gauge</h2>
-          <div className="h-64 w-full">
-            {!mounted ? <div className="h-full w-full animate-pulse rounded bg-slate-100" /> : null}
-            {mounted ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <RadialBarChart cx="50%" cy="50%" innerRadius="60%" outerRadius="90%" barSize={20} data={gaugeData} startAngle={180} endAngle={0}>
-                <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                <RadialBar background dataKey="value" cornerRadius={10} />
-                <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="fill-slate-900 text-xl font-semibold">
-                  {`${rangeStats?.successRatio ?? 0}%`}
-                </text>
-              </RadialBarChart>
-            </ResponsiveContainer>
-            ) : null}
-          </div>
-        </article>
-      </div>
-
-      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Task completion trend (last 7 days)</h2>
-        <div className="h-64 w-full">
-          {!mounted ? <div className="h-full w-full animate-pulse rounded bg-slate-100" /> : null}
-          {mounted ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={stats?.charts.completionTrend ?? []}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" />
-              <YAxis domain={[0, 100]} />
-              <Tooltip />
-              <Line type="monotone" dataKey="ratio" stroke="#8B5CF6" strokeWidth={3} dot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
-          ) : null}
+      {loading ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
         </div>
-      </article>
+      ) : null}
 
-      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Monthly hours trend (12 months)</h2>
-        <div className="h-64 w-full">
-          {!mounted ? <div className="h-full w-full animate-pulse rounded bg-slate-100" /> : null}
-          {mounted ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={stats?.charts.monthlyHours ?? []}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="hours" fill="#6366F1" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-          ) : null}
-        </div>
-      </article>
+      <Tabs defaultValue="weekly">
+        <TabsList>
+          <TabsTrigger value="weekly">Weekly</TabsTrigger>
+          <TabsTrigger value="monthly">Monthly</TabsTrigger>
+          <TabsTrigger value="yearly">Yearly</TabsTrigger>
+        </TabsList>
+        <TabsContent value="weekly" className="space-y-4">{renderCharts("weekly")}</TabsContent>
+        <TabsContent value="monthly" className="space-y-4">{renderCharts("monthly")}</TabsContent>
+        <TabsContent value="yearly" className="space-y-4">{renderCharts("yearly")}</TabsContent>
+      </Tabs>
     </section>
   );
 }

@@ -58,12 +58,36 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
   }, [status]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
+    const onFocus = () => {
       void syncFromServer();
-    }, 5000);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void syncFromServer();
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [syncFromServer]);
+
+  useEffect(() => {
+    if (status !== "running") return;
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void syncFromServer();
+      }
+    }, 60000);
 
     return () => window.clearInterval(interval);
-  }, [syncFromServer]);
+  }, [status, syncFromServer]);
 
   const totalPlanned = plannedSeconds + extraSeconds;
   const secondsLeft = totalPlanned - elapsedSeconds;

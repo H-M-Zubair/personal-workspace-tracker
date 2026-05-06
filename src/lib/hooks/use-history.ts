@@ -4,7 +4,14 @@ import { useEffect, useState } from "react";
 
 export interface HistoryPayload {
   attendance: Array<{ date: string; checked_in_at: string }>;
-  sessions: Array<{ task_id: string; total_seconds: number; status: string; created_at: string }>;
+  sessions: Array<{
+    id: string;
+    task_id: string;
+    total_seconds: number;
+    status: string;
+    created_at: string;
+    task?: { title?: string } | null;
+  }>;
 }
 
 export function useHistory() {

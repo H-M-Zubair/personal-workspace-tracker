@@ -84,3 +84,9 @@ grant select, insert, update, delete on table public.timer_sessions to authentic
 grant select on table public.tasks to anon;
 grant select on table public.attendance to anon;
 grant select on table public.timer_sessions to anon;
+
+-- Service role grants for admin scripts/seeding.
+grant usage on schema public to service_role;
+grant select, insert, update, delete on table public.tasks to service_role;
+grant select, insert, update, delete on table public.attendance to service_role;
+grant select, insert, update, delete on table public.timer_sessions to service_role;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import {
   Bar,
   BarChart,
@@ -24,11 +24,11 @@ type RangeKey = "weekly" | "monthly" | "yearly";
 export default function DashboardPage() {
   const { stats, loading } = useStats();
   const [range, setRange] = useState<RangeKey>("weekly");
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   const rangeStats = stats?.ranges[range];
 

@@ -19,11 +19,13 @@ export default function TimerPanel({
   taskName,
   plannedSeconds,
   completedForToday = false,
+  onStatusUpdated,
 }: {
   taskId: string;
   taskName: string;
   plannedSeconds: number;
   completedForToday?: boolean;
+  onStatusUpdated?: () => Promise<void> | void;
 }) {
   const { activeTimer, refreshActiveTimer } = useTimerState();
   const [status, setStatus] = useState<TimerStatus>("idle");
@@ -107,7 +109,7 @@ export default function TimerPanel({
       return;
     }
 
-    await Promise.all([syncFromServer(), refreshActiveTimer()]);
+    await Promise.all([syncFromServer(), refreshActiveTimer(), onStatusUpdated?.()]);
     if (action === "complete") {
       toast.success("Task marked as completed.");
     }

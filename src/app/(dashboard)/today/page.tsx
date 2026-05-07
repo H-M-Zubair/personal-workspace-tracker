@@ -14,7 +14,7 @@ const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function TodayPage() {
   const { tasks, loading: tasksLoading } = useTasks();
   const { attendance, loading: attendanceLoading, checkIn } = useAttendance();
-  const { history } = useHistory();
+  const { history, refresh: refreshHistory } = useHistory();
   const { activeTimer } = useTimerState();
 
   const todayLabel = dayLabels[new Date().getDay()] ?? "Mon";
@@ -57,7 +57,7 @@ export default function TodayPage() {
 
     if (selectedTaskId) {
       const matched = todaysTasks.find((task) => task.id === selectedTaskId);
-      if (matched) return matched;
+      if (matched && taskStatusMap.get(matched.id) !== "completed") return matched;
     }
 
     const firstIncomplete = todaysTasks.find((task) => taskStatusMap.get(task.id) !== "completed");
@@ -105,6 +105,7 @@ export default function TodayPage() {
             taskName={current.title}
             plannedSeconds={(current.planned_hours * 3600) + (current.planned_minutes * 60)}
             completedForToday={taskStatusMap.get(current.id) === "completed"}
+            onStatusUpdated={refreshHistory}
           />
         </div>
       ) : (

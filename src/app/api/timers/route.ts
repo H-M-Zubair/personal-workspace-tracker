@@ -28,8 +28,19 @@ function getElapsedSeconds(session: TimerSession) {
   }
 
   const anchor = session.resumed_at ?? session.started_at;
-  const elapsedSinceAnchor = Math.max(0, Math.floor((Date.now() - new Date(anchor).getTime()) / 1000));
+  const elapsedSinceAnchor = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(anchor).getTime()) / 1000),
+  );
   return base + elapsedSinceAnchor;
+}
+
+function getTodayStartIso() {
+  const now = new Date();
+  const startUtc = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
+  );
+  return startUtc.toISOString();
 }
 
 async function getActiveSessionForTask(
@@ -37,11 +48,14 @@ async function getActiveSessionForTask(
   userId: string,
   taskId: string,
 ) {
+  const todayStartIso = getTodayStartIso();
+
   const { data, error } = await supabase
     .from("timer_sessions")
     .select("*, task:tasks(title, planned_hours, planned_minutes)")
     .eq("user_id", userId)
     .eq("task_id", taskId)
+    .gte("created_at", todayStartIso)
     .in("status", ["running", "paused"])
     .order("created_at", { ascending: false })
     .limit(1)
@@ -54,16 +68,21 @@ export async function GET(request: Request) {
   const { supabase, user } = await getServerUser();
 
   if (!user) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const { searchParams } = new URL(request.url);
   const taskId = searchParams.get("taskId");
+  const todayStartIso = getTodayStartIso();
 
   let query = supabase
     .from("timer_sessions")
     .select("*, task:tasks(title, planned_hours, planned_minutes)")
     .eq("user_id", user.id)
+    .gte("created_at", todayStartIso)
     .in("status", ["running", "paused"])
     .order("created_at", { ascending: false })
     .limit(1);
@@ -75,7 +94,10 @@ export async function GET(request: Request) {
   const { data, error } = await query.maybeSingle<TimerSession>();
 
   if (error) {
-    return NextResponse.json({ success: false, error: "Failed to fetch timer state" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Failed to fetch timer state" },
+      { status: 500 },
+    );
   }
 
   if (!data) {
@@ -95,22 +117,36 @@ export async function POST(request: Request) {
   const { supabase, user } = await getServerUser();
 
   if (!user) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const payload = await request.json();
   const parsed = timerSchema.safeParse(payload);
 
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: "Invalid payload" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Invalid payload" },
+      { status: 400 },
+    );
   }
 
   const taskId = parsed.data.taskId;
   const now = new Date().toISOString();
-  const activeSession = await getActiveSessionForTask(supabase, user.id, taskId);
+  const todayStartIso = getTodayStartIso();
+  const activeSession = await getActiveSessionForTask(
+    supabase,
+    user.id,
+    taskId,
+  );
 
   if (activeSession.error) {
-    return NextResponse.json({ success: false, error: "Failed to fetch timer state" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Failed to fetch timer state" },
+      { status: 500 },
+    );
   }
 
   if (parsed.data.action === "start") {
@@ -118,18 +154,26 @@ export async function POST(request: Request) {
       .from("timer_sessions")
       .select("id, task_id")
       .eq("user_id", user.id)
+      .gte("created_at", todayStartIso)
       .eq("status", "running")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle<{ id: string; task_id: string }>();
 
     if (runningError) {
-      return NextResponse.json({ success: false, error: "Failed to validate running timer" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Failed to validate running timer" },
+        { status: 500 },
+      );
     }
 
     if (runningSession && runningSession.task_id !== taskId) {
       return NextResponse.json(
-        { success: false, error: "Pause or complete the currently running task before starting another." },
+        {
+          success: false,
+          error:
+            "Pause or complete the currently running task before starting another.",
+        },
         { status: 409 },
       );
     }
@@ -158,20 +202,29 @@ export async function POST(request: Request) {
       .single<TimerSession>();
 
     if (error || !data) {
-      return NextResponse.json({ success: false, error: "Failed to start timer" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Failed to start timer" },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...data,
-        elapsedSeconds: getElapsedSeconds(data),
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          ...data,
+          elapsedSeconds: getElapsedSeconds(data),
+        },
       },
-    }, { status: 201 });
+      { status: 201 },
+    );
   }
 
   if (!activeSession.data) {
-    return NextResponse.json({ success: false, error: "No active timer found" }, { status: 404 });
+    return NextResponse.json(
+      { success: false, error: "No active timer found" },
+      { status: 404 },
+    );
   }
 
   const current = activeSession.data;
@@ -191,10 +244,16 @@ export async function POST(request: Request) {
       .single<TimerSession>();
 
     if (error || !data) {
-      return NextResponse.json({ success: false, error: "Failed to pause timer" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Failed to pause timer" },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({ success: true, data: { ...data, elapsedSeconds: nextTotal } });
+    return NextResponse.json({
+      success: true,
+      data: { ...data, elapsedSeconds: nextTotal },
+    });
   }
 
   if (parsed.data.action === "resume") {
@@ -211,10 +270,16 @@ export async function POST(request: Request) {
       .single<TimerSession>();
 
     if (error || !data) {
-      return NextResponse.json({ success: false, error: "Failed to resume timer" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Failed to resume timer" },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({ success: true, data: { ...data, elapsedSeconds: getElapsedSeconds(data) } });
+    return NextResponse.json({
+      success: true,
+      data: { ...data, elapsedSeconds: getElapsedSeconds(data) },
+    });
   }
 
   const finalTotal = getElapsedSeconds(current);
@@ -232,8 +297,14 @@ export async function POST(request: Request) {
     .single<TimerSession>();
 
   if (error || !data) {
-    return NextResponse.json({ success: false, error: "Failed to complete timer" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Failed to complete timer" },
+      { status: 500 },
+    );
   }
 
-  return NextResponse.json({ success: true, data: { ...data, elapsedSeconds: finalTotal } });
+  return NextResponse.json({
+    success: true,
+    data: { ...data, elapsedSeconds: finalTotal },
+  });
 }

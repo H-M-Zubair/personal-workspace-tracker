@@ -94,6 +94,24 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshActiveTimer]);
 
+  useEffect(() => {
+    if (activeTimer?.status !== "running") {
+      return;
+    }
+
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      // Modern browsers show a generic warning message.
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [activeTimer?.status]);
+
   const runTimerAction = useCallback(async (action: "pause" | "resume" | "complete") => {
     if (!activeTimer) return;
 

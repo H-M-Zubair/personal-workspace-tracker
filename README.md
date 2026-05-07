@@ -1,61 +1,61 @@
-# Workspace Tracker MVP
+# Workplace Tracker
 
-A Next.js + Supabase workspace tracker with authentication, attendance, task planning, timers, dashboard metrics, and calendar history.
+Workplace Tracker is a simple web app to help teams or individuals manage daily work in one place.
+It includes login, attendance tracking, task management, work timer sessions, and a dashboard view.
 
-## Tech Stack
+## Why this project is helpful
 
-- Next.js (App Router)
-- TypeScript + Tailwind CSS
-- Supabase Auth + Postgres + RLS
-- React Hook Form + Zod
+- Keeps daily work records organized
+- Shows progress and activity in one dashboard
+- Helps improve focus with tracked work sessions
+- Makes it easier to review work history from calendar and reports
 
-## 1) Environment Variables
+## Tech stack
 
-Create `.env.local` from `.env.example`:
+- Next.js
+- TypeScript
+- Tailwind CSS
+- Supabase (Auth + Postgres + RLS)
+
+## How to run locally
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create local environment file:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Required values:
+3. Add your Supabase values in `.env.local` (see env section below).
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+4. Run database schema in Supabase:
+   - Open Supabase SQL Editor
+   - Run SQL from `supabase/schema.sql`
 
-## 2) Database Setup (Supabase)
-
-Run SQL from `supabase/schema.sql` in Supabase SQL Editor.
-
-This creates:
-
-- `tasks`
-- `attendance`
-- `timer_sessions`
-- RLS policies for each table
-
-## 3) Run Project
+5. Start development server:
 
 ```bash
-npm install
 npm run dev
 ```
 
 Open `http://localhost:3000`.
 
-## 4) Build / Lint
+## Environment variables
 
-```bash
-npm run lint
-npm run build
-```
+Set these in `.env.local`:
 
-## Routes
+- `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Public anon key for client-side auth
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key for privileged server actions
 
-- `/login`, `/register`
-- `/` dashboard
-- `/today`
-- `/tasks`
-- `/calendar`
-- `/settings`
-- APIs under `/api/*`
+## Useful scripts
+
+- `npm run dev` - Start development server
+- `npm run lint` - Run ESLint
+- `npm run build` - Build production app
+- `npm run start` - Start production server

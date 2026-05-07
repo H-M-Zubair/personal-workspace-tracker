@@ -81,6 +81,7 @@ export default function TimerPanel({
   const totalPlanned = plannedSeconds + extraSeconds;
   const secondsLeft = totalPlanned - effectiveElapsed;
   const isOvertime = secondsLeft < 0;
+  const displaySeconds = effectiveStatus === "completed" ? 0 : Math.max(secondsLeft, 0);
   const progress = totalPlanned <= 0 ? 0 : Math.min(100, Math.round((effectiveElapsed / totalPlanned) * 100));
 
   const label = useMemo(() => {
@@ -144,7 +145,7 @@ export default function TimerPanel({
     <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-sm text-slate-500">Active Timer</p>
       <h3 className="mt-1 text-lg font-semibold">{taskName}</h3>
-      <p className={`mt-3 font-mono text-3xl ${isOvertime ? "text-rose-600" : "text-blue-700"}`}>{formatDuration(Math.abs(secondsLeft))}</p>
+      <p className={`mt-3 font-mono text-3xl ${isOvertime ? "text-rose-600" : "text-blue-700"}`}>{formatDuration(displaySeconds)}</p>
       <p className="text-xs text-slate-500">{label}</p>
 
       <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">

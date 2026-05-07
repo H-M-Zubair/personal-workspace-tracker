@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { format } from "date-fns";
 import TimerPanel from "@/components/schedule/timer-panel";
 import { useAttendance } from "@/lib/hooks/use-attendance";
+import { useHistory } from "@/lib/hooks/use-history";
 import { useTasks } from "@/lib/hooks/use-tasks";
 import { useTimerState } from "@/lib/context/timer-context";
 import { formatClock } from "@/lib/utils/time";
@@ -12,16 +14,38 @@ const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function TodayPage() {
   const { tasks, loading: tasksLoading } = useTasks();
   const { attendance, loading: attendanceLoading, checkIn } = useAttendance();
+  const { history } = useHistory();
   const { activeTimer } = useTimerState();
 
   const todayLabel = dayLabels[new Date().getDay()] ?? "Mon";
+  const todayDate = format(new Date(), "yyyy-MM-dd");
 
   const todaysTasks = useMemo(
-    () => tasks.filter((task) => task.work_days?.includes(todayLabel)),
-    [tasks, todayLabel],
+    () => tasks.filter((task) => {
+      if (task.frequency === "once") {
+        return task.single_date === todayDate;
+      }
+      return task.work_days?.includes(todayLabel);
+    }),
+    [tasks, todayDate, todayLabel],
   );
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const runningTaskId = activeTimer?.status === "running" ? activeTimer.taskId : null;
+  const todaySessions = useMemo(
+    () => (history?.sessions ?? []).filter((session) => session.created_at.slice(0, 10) === todayDate),
+    [history?.sessions, todayDate],
+  );
+  const taskStatusMap = useMemo(() => {
+    const map = new Map<string, string>();
+    [...todaySessions]
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+      .forEach((session) => {
+        if (!map.has(session.task_id)) {
+          map.set(session.task_id, session.status);
+        }
+      });
+    return map;
+  }, [todaySessions]);
 
   const current = useMemo(() => {
     if (!todaysTasks.length) return null;
@@ -36,8 +60,9 @@ export default function TodayPage() {
       if (matched) return matched;
     }
 
-    return todaysTasks[0];
-  }, [runningTaskId, selectedTaskId, todaysTasks]);
+    const firstIncomplete = todaysTasks.find((task) => taskStatusMap.get(task.id) !== "completed");
+    return firstIncomplete ?? todaysTasks[0];
+  }, [runningTaskId, selectedTaskId, taskStatusMap, todaysTasks]);
 
   return (
     <section className="space-y-4">
@@ -79,6 +104,7 @@ export default function TodayPage() {
             taskId={current.id}
             taskName={current.title}
             plannedSeconds={(current.planned_hours * 3600) + (current.planned_minutes * 60)}
+            completedForToday={taskStatusMap.get(current.id) === "completed"}
           />
         </div>
       ) : (
@@ -89,12 +115,15 @@ export default function TodayPage() {
         <div className="space-y-2">
           {todaysTasks.map((task) => {
             const isActive = activeTimer?.taskId === task.id;
+            const status = taskStatusMap.get(task.id) ?? "not_started";
 
             return (
               <article key={task.id} className={`rounded-xl border bg-white p-4 shadow-sm ${isActive ? "border-blue-400" : "border-slate-200"}`}>
                 <h3 className="font-semibold text-slate-900">{task.title}</h3>
                 <p className="text-sm text-slate-600">Planned {task.planned_hours}h {task.planned_minutes}m</p>
                 {isActive ? <p className="mt-1 text-xs font-medium text-blue-700">Active timer task</p> : null}
+                {!isActive && status === "completed" ? <p className="mt-1 text-xs font-medium text-emerald-700">Completed</p> : null}
+                {!isActive && status === "paused" ? <p className="mt-1 text-xs font-medium text-amber-700">Paused</p> : null}
               </article>
             );
           })}

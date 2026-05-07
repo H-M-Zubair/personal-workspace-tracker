@@ -8,6 +8,8 @@ export interface TaskDTO {
   description?: string;
   planned_hours: number;
   planned_minutes: number;
+  frequency: "once" | "repeat";
+  single_date?: string | null;
   work_days: string[];
   category: string;
   priority: string;
@@ -50,6 +52,7 @@ export function useTasks() {
     if (payload.success) {
       await fetchTasks();
     }
+    return payload;
   };
 
   return { tasks, loading, refresh: fetchTasks, deleteTask };

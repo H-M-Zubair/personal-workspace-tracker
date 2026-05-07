@@ -89,11 +89,12 @@ export async function GET() {
 
   const today = new Date();
   const todayLabel = dayLabels[today.getDay()] ?? "Mon";
+  const todayDate = toIsoDate(today);
 
   const [tasksRes, sessionsRes, attendanceRes] = await Promise.all([
     supabase
       .from("tasks")
-      .select("id, work_days")
+      .select("id, work_days, frequency, single_date")
       .eq("user_id", user.id)
       .eq("is_active", true),
     supabase
@@ -114,8 +115,13 @@ export async function GET() {
   }
 
   const sessions = sessionsRes.data ?? [];
-  const todaysSessions = sessions.filter((session) => session.created_at.slice(0, 10) === toIsoDate(today));
-  const todaysTasks = (tasksRes.data ?? []).filter((task) => task.work_days?.includes(todayLabel));
+  const todaysSessions = sessions.filter((session) => session.created_at.slice(0, 10) === todayDate);
+  const todaysTasks = (tasksRes.data ?? []).filter((task) => {
+    if (task.frequency === "once") {
+      return task.single_date === todayDate;
+    }
+    return task.work_days?.includes(todayLabel);
+  });
 
   const todayMetrics = {
     totalSeconds: sumSeconds(todaysSessions),

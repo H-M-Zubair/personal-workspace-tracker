@@ -10,6 +10,8 @@ create table if not exists public.tasks (
   priority text not null default 'Medium' check (priority in ('Low','Medium','High')),
   planned_hours int not null default 0 check (planned_hours >= 0),
   planned_minutes int not null default 0 check (planned_minutes between 0 and 59),
+  frequency text not null default 'repeat' check (frequency in ('once','repeat')),
+  single_date date,
   work_days text[] not null default array['Mon'],
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -73,6 +75,12 @@ create trigger tasks_set_updated_at
 before update on public.tasks
 for each row
 execute function public.set_updated_at();
+
+alter table public.tasks add column if not exists frequency text not null default 'repeat';
+alter table public.tasks add column if not exists single_date date;
+update public.tasks set frequency = 'repeat' where frequency is null;
+alter table public.tasks drop constraint if exists tasks_frequency_check;
+alter table public.tasks add constraint tasks_frequency_check check (frequency in ('once','repeat'));
 
 -- Grants required in addition to RLS policies.
 grant usage on schema public to anon, authenticated;

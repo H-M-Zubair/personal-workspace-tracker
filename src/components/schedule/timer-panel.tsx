@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { useTimerState } from "@/lib/context/timer-context";
 import { formatDuration } from "@/lib/utils/time";
 
@@ -12,7 +14,17 @@ type TimerSessionResponse = {
   elapsedSeconds: number;
 };
 
-export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskId: string; taskName: string; plannedSeconds: number }) {
+export default function TimerPanel({
+  taskId,
+  taskName,
+  plannedSeconds,
+  completedForToday = false,
+}: {
+  taskId: string;
+  taskName: string;
+  plannedSeconds: number;
+  completedForToday?: boolean;
+}) {
   const { activeTimer, refreshActiveTimer } = useTimerState();
   const [status, setStatus] = useState<TimerStatus>("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -60,7 +72,9 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
     return () => window.clearInterval(interval);
   }, [status]);
 
-  const effectiveStatus = activeTimer?.taskId === taskId ? activeTimer.status : status;
+  const effectiveStatus = completedForToday
+    ? "completed"
+    : (activeTimer?.taskId === taskId ? activeTimer.status : status);
   const effectiveElapsed = activeTimer?.taskId === taskId ? activeTimer.elapsedSeconds : elapsedSeconds;
   const hasOtherRunningTask = activeTimer?.status === "running" && activeTimer.taskId !== taskId;
 
@@ -86,11 +100,16 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
 
     const payload = await response.json();
     if (!payload.success) {
-      setActionError(payload.error ?? "Unable to update timer.");
+      const message = payload.error ?? "Unable to update timer.";
+      setActionError(message);
+      toast.error(message);
       return;
     }
 
     await Promise.all([syncFromServer(), refreshActiveTimer()]);
+    if (action === "complete") {
+      toast.success("Task marked as completed.");
+    }
   };
 
   const onStart = async () => {
@@ -133,11 +152,11 @@ export default function TimerPanel({ taskId, taskName, plannedSeconds }: { taskI
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" onClick={onStart} disabled={effectiveStatus !== "idle" || syncing || hasOtherRunningTask} className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white disabled:opacity-50">Start</button>
-        <button type="button" onClick={onPause} disabled={effectiveStatus !== "running" || syncing} className="rounded-lg bg-amber-500 px-3 py-2 text-sm text-white disabled:opacity-50">Pause</button>
-        <button type="button" onClick={onResume} disabled={effectiveStatus !== "paused" || syncing} className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50">Resume</button>
-        <button type="button" onClick={onAddFive} disabled={effectiveStatus === "completed" || syncing} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-50">Add 5 min</button>
-        <button type="button" onClick={onDone} disabled={(effectiveStatus !== "running" && effectiveStatus !== "paused") || syncing} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50">Done</button>
+        <Button type="button" onClick={onStart} disabled={effectiveStatus !== "idle" || syncing || hasOtherRunningTask}>Start</Button>
+        <Button type="button" onClick={onPause} disabled={effectiveStatus !== "running" || syncing} variant="secondary">Pause</Button>
+        <Button type="button" onClick={onResume} disabled={effectiveStatus !== "paused" || syncing}>Resume</Button>
+        <Button type="button" onClick={onAddFive} disabled={effectiveStatus === "completed" || syncing} variant="outline">Add 5 min</Button>
+        <Button type="button" onClick={onDone} disabled={(effectiveStatus !== "running" && effectiveStatus !== "paused") || syncing}>Done</Button>
       </div>
       {hasOtherRunningTask ? (
         <p className="mt-2 text-xs text-amber-700">Another task is running. Pause or stop it first to switch.</p>

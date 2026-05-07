@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { createSupabaseClient } from "@/lib/supabase/client";
 
 type LoginFields = {
@@ -42,11 +44,14 @@ export default function LoginPage() {
     });
 
     if (signInError) {
-      setError(mapAuthError(signInError.message));
+      const message = mapAuthError(signInError.message);
+      setError(message);
+      toast.error(message);
       setLoading(false);
       return;
     }
 
+    toast.success("Signed in successfully.");
     router.replace("/");
     router.refresh();
   };
@@ -57,7 +62,7 @@ export default function LoginPage() {
       <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Email" type="email" {...register("email", { required: true })} />
       <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Password" type="password" {...register("password", { required: true })} />
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-      <button className="w-full rounded-lg bg-blue-600 px-3 py-2 text-white disabled:opacity-60" disabled={loading} type="submit">{loading ? "Signing in..." : "Sign in"}</button>
+      <Button className="w-full" disabled={loading} type="submit">{loading ? "Signing in..." : "Sign in"}</Button>
       <p className="text-sm text-slate-600">No account? <Link className="text-blue-700" href="/register">Create one</Link></p>
     </form>
   );

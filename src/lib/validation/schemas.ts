@@ -7,9 +7,27 @@ export const taskSchema = z.object({
   priority: z.enum(["Low", "Medium", "High"]).default("Medium"),
   plannedHours: z.number().int().min(0),
   plannedMinutes: z.number().int().min(0).max(59),
-  workDays: z.array(z.enum(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]))
-    .min(1),
+  frequency: z.enum(["once", "repeat"]).default("repeat"),
+  singleDate: z.string().date().optional(),
+  workDays: z.array(z.enum(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])).default([]),
   isActive: z.boolean().default(true),
+}).superRefine((value, context) => {
+  const plannedSeconds = (value.plannedHours * 3600) + (value.plannedMinutes * 60);
+  if (plannedSeconds <= 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Planned time must be greater than 0.",
+      path: ["plannedHours"],
+    });
+  }
+
+  if (value.frequency === "repeat" && value.workDays.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Select at least one work day for repeat tasks.",
+      path: ["workDays"],
+    });
+  }
 });
 
 export const attendanceSchema = z.object({

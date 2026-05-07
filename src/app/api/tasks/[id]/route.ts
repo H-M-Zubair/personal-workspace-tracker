@@ -30,7 +30,12 @@ export async function PATCH(request: Request, context: Params) {
       priority: parsed.data.priority,
       planned_hours: parsed.data.plannedHours,
       planned_minutes: parsed.data.plannedMinutes,
-      work_days: parsed.data.workDays,
+      frequency: parsed.data.frequency,
+      single_date:
+        parsed.data.frequency === "once"
+          ? (parsed.data.singleDate ?? new Date().toISOString().slice(0, 10))
+          : null,
+      work_days: parsed.data.frequency === "repeat" ? parsed.data.workDays : [],
       is_active: parsed.data.isActive,
     })
     .eq("id", id)

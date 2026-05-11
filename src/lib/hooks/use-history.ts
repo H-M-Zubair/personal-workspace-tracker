@@ -12,7 +12,7 @@ export interface HistoryPayload {
     created_at: string;
     task?: { title?: string } | null;
   }>;
-  absences: Array<{
+  absences?: Array<{
     id: string;
     task_id: string;
     date: string;

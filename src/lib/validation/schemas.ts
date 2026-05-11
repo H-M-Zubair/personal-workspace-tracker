@@ -46,3 +46,9 @@ export const timerSchema = z.object({
   action: z.enum(["start", "pause", "resume", "complete"]),
   totalSeconds: z.number().int().nonnegative().optional(),
 });
+
+export const taskAbsenceSchema = z.object({
+  taskId: z.string().uuid(),
+  date: z.string().date(),
+  reason: z.string().trim().min(5).max(500),
+});

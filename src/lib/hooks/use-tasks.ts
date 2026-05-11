@@ -14,6 +14,7 @@ export interface TaskDTO {
   category: string;
   priority: string;
   is_active: boolean;
+  created_at: string;
 }
 
 export function useTasks() {

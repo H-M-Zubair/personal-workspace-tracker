@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { addDays, format, startOfWeek, subWeeks } from "date-fns";
 import { useHistory } from "@/lib/hooks/use-history";
+import { useTasks } from "@/lib/hooks/use-tasks";
 import { formatDuration } from "@/lib/utils/time";
 
 type DayStats = {
@@ -26,11 +27,13 @@ function getScoreColor(value: number) {
 
 export default function CalendarPage() {
   const { history, loading } = useHistory();
+  const { tasks, loading: tasksLoading } = useTasks();
 
   const weekSections = useMemo(() => {
     if (!history) return [];
 
     const dailyMap = new Map<string, DayStats>();
+    const todayDate = format(new Date(), "yyyy-MM-dd");
 
     history.sessions.forEach((session) => {
       const date = session.created_at.slice(0, 10);
@@ -64,11 +67,26 @@ export default function CalendarPage() {
       const days = Array.from({ length: 7 }, (_, index) => {
         const dayDate = addDays(weekStart, index);
         const key = format(dayDate, "yyyy-MM-dd");
+        const isPastOrToday = key <= todayDate;
+        const dayLabel = format(dayDate, "EEE");
+        const hasAssignedTask = tasks.some((task) => {
+          if (!task.is_active) return false;
+          if ((task.created_at?.slice(0, 10) ?? "") > key) return false;
+          if (task.frequency === "once") {
+            return task.single_date === key;
+          }
+          return task.work_days?.includes(dayLabel);
+        });
+
+        if (!isPastOrToday || !hasAssignedTask) {
+          return null;
+        }
+
         const stats = dailyMap.get(key);
 
         return {
           date: key,
-          label: format(dayDate, "EEE"),
+          label: dayLabel,
           dayOfMonth: format(dayDate, "d MMM"),
           completed: stats?.completed ?? 0,
           total: stats?.total ?? 0,
@@ -77,9 +95,10 @@ export default function CalendarPage() {
         };
       });
 
-      const weekSeconds = days.reduce((sum, d) => sum + d.totalSeconds, 0);
-      const weekCompleted = days.reduce((sum, d) => sum + d.completed, 0);
-      const weekTotal = days.reduce((sum, d) => sum + d.total, 0);
+      const filteredDays = days.filter((day): day is NonNullable<typeof day> => day !== null);
+      const weekSeconds = filteredDays.reduce((sum, d) => sum + d.totalSeconds, 0);
+      const weekCompleted = filteredDays.reduce((sum, d) => sum + d.completed, 0);
+      const weekTotal = filteredDays.reduce((sum, d) => sum + d.total, 0);
 
       return {
         key: format(weekStart, "yyyy-MM-dd"),
@@ -87,15 +106,15 @@ export default function CalendarPage() {
         weekSeconds,
         weekCompleted,
         weekTotal,
-        days,
+        days: filteredDays,
       };
-    });
-  }, [history]);
+    }).filter((week) => week.days.length > 0);
+  }, [history, tasks]);
 
   return (
     <section className="space-y-5">
       <h1 className="text-2xl font-bold">Calendar & History</h1>
-      {loading ? <p className="text-sm text-slate-500">Loading history...</p> : null}
+      {loading || tasksLoading ? <p className="text-sm text-slate-500">Loading history...</p> : null}
 
       {weekSections.map((week) => (
         <section key={week.key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

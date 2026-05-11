@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import TimerPanel from "@/components/schedule/timer-panel";
 import { useAttendance } from "@/lib/hooks/use-attendance";
 import { useHistory } from "@/lib/hooks/use-history";
@@ -10,12 +11,22 @@ import { useTimerState } from "@/lib/context/timer-context";
 import { formatClock } from "@/lib/utils/time";
 
 const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MISSED_LOOKBACK_DAYS = 7;
+
+type MissedTaskAlert = {
+  taskId: string;
+  taskTitle: string;
+  date: string;
+  dayLabel: string;
+};
 
 export default function TodayPage() {
   const { tasks, loading: tasksLoading } = useTasks();
   const { attendance, loading: attendanceLoading, checkIn } = useAttendance();
   const { history, refresh: refreshHistory } = useHistory();
   const { activeTimer } = useTimerState();
+  const [absenceReasons, setAbsenceReasons] = useState<Record<string, string>>({});
+  const [savingAbsenceKey, setSavingAbsenceKey] = useState<string | null>(null);
 
   const todayLabel = dayLabels[new Date().getDay()] ?? "Mon";
   const todayDate = format(new Date(), "yyyy-MM-dd");
@@ -46,6 +57,102 @@ export default function TodayPage() {
       });
     return map;
   }, [todaySessions]);
+  const completedTaskDateMap = useMemo(() => {
+    const map = new Set<string>();
+    (history?.sessions ?? []).forEach((session) => {
+      if (session.status !== "completed") return;
+      map.add(`${session.task_id}:${session.created_at.slice(0, 10)}`);
+    });
+    return map;
+  }, [history?.sessions]);
+  const absenceReasonMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (history?.absences ?? []).forEach((absence) => {
+      map.set(`${absence.task_id}:${absence.date}`, absence.reason);
+    });
+    return map;
+  }, [history?.absences]);
+  const missedTaskAlerts = useMemo<MissedTaskAlert[]>(() => {
+    const alerts: MissedTaskAlert[] = [];
+    const now = new Date();
+
+    tasks
+      .filter((task) => task.is_active && task.frequency === "repeat")
+      .forEach((task) => {
+        const taskCreatedDate = task.created_at?.slice(0, 10);
+        for (let offset = 1; offset <= MISSED_LOOKBACK_DAYS; offset += 1) {
+          const date = new Date(now);
+          date.setDate(now.getDate() - offset);
+          const dateString = format(date, "yyyy-MM-dd");
+          if (taskCreatedDate && dateString < taskCreatedDate) {
+            continue;
+          }
+
+          const dayLabel = dayLabels[date.getDay()] ?? "Mon";
+          if (!task.work_days?.includes(dayLabel)) {
+            continue;
+          }
+
+          const taskDateKey = `${task.id}:${dateString}`;
+          const isCompleted = completedTaskDateMap.has(taskDateKey);
+          const hasReason = absenceReasonMap.has(taskDateKey);
+          if (isCompleted || hasReason) {
+            continue;
+          }
+
+          alerts.push({
+            taskId: task.id,
+            taskTitle: task.title,
+            date: dateString,
+            dayLabel,
+          });
+        }
+      });
+
+    return alerts.sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, [absenceReasonMap, completedTaskDateMap, tasks]);
+  const missedCountByTask = useMemo(() => {
+    const map = new Map<string, number>();
+    missedTaskAlerts.forEach((alert) => {
+      map.set(alert.taskId, (map.get(alert.taskId) ?? 0) + 1);
+    });
+    return map;
+  }, [missedTaskAlerts]);
+  const saveAbsenceReason = useCallback(async (taskId: string, date: string) => {
+    const key = `${taskId}:${date}`;
+    const reason = (absenceReasons[key] ?? "").trim();
+    if (reason.length < 5) {
+      toast.error("Please provide a clear reason (at least 5 characters).");
+      return;
+    }
+
+    try {
+      setSavingAbsenceKey(key);
+      const response = await fetch("/api/task-absences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId, date, reason }),
+      });
+      const payload = await response.json();
+      if (!payload.success) {
+        toast.error(payload.error ?? "Failed to save reason.");
+        return;
+      }
+
+      setAbsenceReasons((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      await refreshHistory();
+      toast.success("Absence reason saved.");
+    } catch (error) {
+      console.error("[TodayPage] saveAbsenceReason", error);
+      toast.error("Failed to save reason.");
+    } finally {
+      setSavingAbsenceKey(null);
+    }
+  }, [absenceReasons, refreshHistory]);
 
   const current = useMemo(() => {
     if (!todaysTasks.length) return null;
@@ -78,6 +185,46 @@ export default function TodayPage() {
       </div>
 
       {tasksLoading ? <p className="text-sm text-slate-500">Loading tasks...</p> : null}
+      {missedTaskAlerts.length > 0 ? (
+        <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-rose-800">Missed task alerts</h2>
+          <p className="text-xs text-rose-700">
+            You have pending missed task days. Add a reason for each day to keep your records professional and complete.
+          </p>
+          {missedTaskAlerts.map((alert) => {
+            const key = `${alert.taskId}:${alert.date}`;
+            const isSaving = savingAbsenceKey === key;
+            return (
+              <article key={key} className="rounded-lg border border-rose-200 bg-white p-3">
+                <p className="text-sm font-medium text-slate-900">{alert.taskTitle}</p>
+                <p className="text-xs text-slate-600">
+                  Missed on {alert.dayLabel}, {alert.date}
+                </p>
+                <textarea
+                  className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  rows={3}
+                  placeholder="Reason for absence on this task/day..."
+                  value={absenceReasons[key] ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setAbsenceReasons((prev) => ({ ...prev, [key]: value }));
+                  }}
+                />
+                <button
+                  type="button"
+                  className="mt-2 rounded-lg bg-rose-600 px-3 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-70"
+                  onClick={() => {
+                    void saveAbsenceReason(alert.taskId, alert.date);
+                  }}
+                  disabled={isSaving}
+                >
+                  {isSaving ? "Saving..." : "Submit reason"}
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
       {current ? (
         <div className="space-y-3">
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -125,6 +272,11 @@ export default function TodayPage() {
                 {isActive ? <p className="mt-1 text-xs font-medium text-blue-700">Active timer task</p> : null}
                 {!isActive && status === "completed" ? <p className="mt-1 text-xs font-medium text-emerald-700">Completed</p> : null}
                 {!isActive && status === "paused" ? <p className="mt-1 text-xs font-medium text-amber-700">Paused</p> : null}
+                {(missedCountByTask.get(task.id) ?? 0) > 0 ? (
+                  <p className="mt-1 text-xs font-medium text-rose-700">
+                    Missed on {missedCountByTask.get(task.id)} day(s) - reason pending
+                  </p>
+                ) : null}
               </article>
             );
           })}

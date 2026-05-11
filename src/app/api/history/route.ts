@@ -8,7 +8,7 @@ export async function GET() {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const [attendance, sessions] = await Promise.all([
+  const [attendance, sessions, absences] = await Promise.all([
     supabase
       .from("attendance")
       .select("date, checked_in_at")
@@ -21,9 +21,15 @@ export async function GET() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(500),
+    supabase
+      .from("task_absences")
+      .select("id, task_id, date, reason, created_at")
+      .eq("user_id", user.id)
+      .order("date", { ascending: false })
+      .limit(500),
   ]);
 
-  if (attendance.error || sessions.error) {
+  if (attendance.error || sessions.error || absences.error) {
     return NextResponse.json({ success: false, error: "Failed to fetch history" }, { status: 500 });
   }
 
@@ -32,6 +38,7 @@ export async function GET() {
     data: {
       attendance: attendance.data ?? [],
       sessions: sessions.data ?? [],
+      absences: absences.data ?? [],
     },
   });
 }

@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { getServerUser } from "@/lib/server/auth";
 import { subDays, subMonths, subYears } from "date-fns";
+import {
+  aggregateDayMetrics,
+  buildAbsenceMap,
+  computeDayMetrics,
+  DAY_LABELS,
+  iterateDatesInclusive,
+} from "@/lib/utils/task-schedule";
 
-const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type RangeKey = "weekly" | "monthly" | "yearly";
@@ -13,15 +19,6 @@ function toIsoDate(date: Date) {
 
 function sumSeconds(items: Array<{ total_seconds?: number | null }>) {
   return items.reduce((sum, item) => sum + (item.total_seconds ?? 0), 0);
-}
-
-function toRangeMetrics(sessions: Array<{ total_seconds?: number | null; status?: string | null }>) {
-  const totalSeconds = sumSeconds(sessions);
-  const totalTasks = sessions.length;
-  const tasksCompleted = sessions.filter((session) => session.status === "completed").length;
-  const successRatio = totalTasks === 0 ? 100 : Math.round((tasksCompleted / totalTasks) * 100);
-
-  return { totalSeconds, totalTasks, tasksCompleted, successRatio };
 }
 
 function buildWeeklyHours(sessions: Array<{ created_at: string; total_seconds: number | null }>) {
@@ -35,27 +32,43 @@ function buildWeeklyHours(sessions: Array<{ created_at: string; total_seconds: n
       .reduce((sum, session) => sum + (session.total_seconds ?? 0), 0);
 
     return {
-      label: dayLabels[date.getDay()] ?? "Day",
+      label: DAY_LABELS[date.getDay()] ?? "Day",
       hours: Number((totalSeconds / 3600).toFixed(2)),
     };
   });
 }
 
-function buildCompletionTrend(sessions: Array<{ created_at: string; status: string | null }>) {
-  const start = subDays(new Date(), 6);
+function buildCompletionTrend(
+  tasks: Parameters<typeof computeDayMetrics>[2],
+  sessions: Parameters<typeof computeDayMetrics>[3],
+  absenceMap: Map<string, string>,
+) {
+  const end = new Date();
+  const start = subDays(end, 6);
 
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = subDays(start, -index);
-    const day = toIsoDate(date);
-    const rows = sessions.filter((session) => session.created_at.slice(0, 10) === day);
-    const completed = rows.filter((row) => row.status === "completed").length;
-    const ratio = rows.length === 0 ? 100 : Math.round((completed / rows.length) * 100);
+  const points: Array<{
+    label: string;
+    ratio: number;
+    assigned: number;
+    completed: number;
+    excused: number;
+    missed: number;
+  }> = [];
 
-    return {
-      label: dayLabels[date.getDay()] ?? "Day",
-      ratio,
-    };
+  iterateDatesInclusive(start, end, (date, dateStr) => {
+    const dayLabel = DAY_LABELS[date.getDay()] ?? "Mon";
+    const metrics = computeDayMetrics(dateStr, dayLabel, tasks, sessions, absenceMap);
+    points.push({
+      label: dayLabel,
+      ratio: metrics.successRatio,
+      assigned: metrics.assigned,
+      completed: metrics.completed,
+      excused: metrics.excused,
+      missed: metrics.missed,
+    });
   });
+
+  return points;
 }
 
 function buildMonthlyHours(sessions: Array<{ created_at: string; total_seconds: number | null }>) {
@@ -80,6 +93,37 @@ function buildMonthlyHours(sessions: Array<{ created_at: string; total_seconds: 
   });
 }
 
+function metricsForDateRange(
+  from: Date,
+  to: Date,
+  tasks: Parameters<typeof computeDayMetrics>[2],
+  sessions: Parameters<typeof computeDayMetrics>[3],
+  absenceMap: Map<string, string>,
+) {
+  const days: ReturnType<typeof computeDayMetrics>[] = [];
+
+  iterateDatesInclusive(from, to, (date, dateStr) => {
+    const dayLabel = DAY_LABELS[date.getDay()] ?? "Mon";
+    days.push(computeDayMetrics(dateStr, dayLabel, tasks, sessions, absenceMap));
+  });
+
+  const totals = aggregateDayMetrics(days);
+
+  return {
+    totalSeconds: sumSeconds(
+      sessions.filter((session) => {
+        const day = session.created_at.slice(0, 10);
+        return day >= toIsoDate(from) && day <= toIsoDate(to);
+      }),
+    ),
+    totalTasks: totals.assigned,
+    tasksCompleted: totals.completed,
+    tasksExcused: totals.excused,
+    tasksMissed: totals.missed,
+    successRatio: totals.successRatio,
+  };
+}
+
 export async function GET() {
   const { supabase, user } = await getServerUser();
 
@@ -88,55 +132,61 @@ export async function GET() {
   }
 
   const today = new Date();
-  const todayLabel = dayLabels[today.getDay()] ?? "Mon";
+  const todayLabel = DAY_LABELS[today.getDay()] ?? "Mon";
   const todayDate = toIsoDate(today);
+  const historyStart = toIsoDate(subYears(today, 1));
 
-  const [tasksRes, sessionsRes, attendanceRes] = await Promise.all([
+  const [tasksRes, sessionsRes, attendanceRes, absencesRes] = await Promise.all([
     supabase
       .from("tasks")
-      .select("id, work_days, frequency, single_date")
+      .select("id, title, work_days, frequency, single_date, is_active, created_at")
       .eq("user_id", user.id)
       .eq("is_active", true),
     supabase
       .from("timer_sessions")
-      .select("created_at, total_seconds, status")
+      .select("task_id, created_at, total_seconds, status")
       .eq("user_id", user.id)
-      .gte("created_at", `${toIsoDate(subYears(today, 1))}T00:00:00.000Z`),
+      .gte("created_at", `${historyStart}T00:00:00.000Z`),
     supabase
       .from("attendance")
       .select("date")
       .eq("user_id", user.id)
       .order("date", { ascending: false })
       .limit(365),
+    supabase
+      .from("task_absences")
+      .select("id, task_id, date, reason, created_at")
+      .eq("user_id", user.id)
+      .gte("date", historyStart)
+      .order("date", { ascending: false })
+      .limit(500),
   ]);
 
-  if (tasksRes.error || sessionsRes.error || attendanceRes.error) {
+  if (tasksRes.error || sessionsRes.error || attendanceRes.error || absencesRes.error) {
     return NextResponse.json({ success: false, error: "Failed to fetch stats" }, { status: 500 });
   }
 
+  const tasks = tasksRes.data ?? [];
   const sessions = sessionsRes.data ?? [];
-  const todaysSessions = sessions.filter((session) => session.created_at.slice(0, 10) === todayDate);
-  const todaysTasks = (tasksRes.data ?? []).filter((task) => {
-    if (task.frequency === "once") {
-      return task.single_date === todayDate;
-    }
-    return task.work_days?.includes(todayLabel);
-  });
+  const absences = absencesRes.data ?? [];
+  const absenceMap = buildAbsenceMap(absences);
+  const taskTitleById = new Map(tasks.map((task) => [task.id, task.title]));
+
+  const todayDayMetrics = computeDayMetrics(todayDate, todayLabel, tasks, sessions, absenceMap);
 
   const todayMetrics = {
-    totalSeconds: sumSeconds(todaysSessions),
-    tasksCompleted: todaysSessions.filter((session) => session.status === "completed").length,
-    totalTasks: todaysTasks.length,
-    successRatio:
-      todaysTasks.length === 0
-        ? 100
-        : Math.round((todaysSessions.filter((session) => session.status === "completed").length / todaysTasks.length) * 100),
+    totalSeconds: sumSeconds(sessions.filter((session) => session.created_at.slice(0, 10) === todayDate)),
+    tasksCompleted: todayDayMetrics.completed,
+    totalTasks: todayDayMetrics.assigned,
+    tasksExcused: todayDayMetrics.excused,
+    tasksMissed: todayDayMetrics.missed,
+    successRatio: todayDayMetrics.successRatio,
   };
 
-  const ranges: Record<RangeKey, ReturnType<typeof toRangeMetrics>> = {
-    weekly: toRangeMetrics(sessions.filter((session) => new Date(session.created_at) >= subDays(today, 7))),
-    monthly: toRangeMetrics(sessions.filter((session) => new Date(session.created_at) >= subMonths(today, 1))),
-    yearly: toRangeMetrics(sessions.filter((session) => new Date(session.created_at) >= subYears(today, 1))),
+  const ranges: Record<RangeKey, ReturnType<typeof metricsForDateRange>> = {
+    weekly: metricsForDateRange(subDays(today, 6), today, tasks, sessions, absenceMap),
+    monthly: metricsForDateRange(subMonths(today, 1), today, tasks, sessions, absenceMap),
+    yearly: metricsForDateRange(subYears(today, 1), today, tasks, sessions, absenceMap),
   };
 
   const streak = (attendanceRes.data ?? []).reduce((count, row, index, rows) => {
@@ -150,6 +200,14 @@ export async function GET() {
     return count;
   }, 0);
 
+  const recentAbsences = absences.slice(0, 12).map((absence) => ({
+    id: absence.id,
+    taskId: absence.task_id,
+    taskTitle: taskTitleById.get(absence.task_id) ?? "Task",
+    date: absence.date,
+    reason: absence.reason,
+  }));
+
   return NextResponse.json({
     success: true,
     data: {
@@ -158,9 +216,10 @@ export async function GET() {
         streak,
       },
       ranges,
+      recentAbsences,
       charts: {
         weeklyHours: buildWeeklyHours(sessions),
-        completionTrend: buildCompletionTrend(sessions),
+        completionTrend: buildCompletionTrend(tasks, sessions, absenceMap),
         monthlyHours: buildMonthlyHours(sessions),
       },
     },

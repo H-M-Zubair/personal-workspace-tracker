@@ -8,6 +8,8 @@ interface RangeMetrics {
   totalSeconds: number;
   totalTasks: number;
   tasksCompleted: number;
+  tasksExcused: number;
+  tasksMissed: number;
   successRatio: number;
 }
 
@@ -16,13 +18,29 @@ interface DashboardStats {
     totalSeconds: number;
     tasksCompleted: number;
     totalTasks: number;
+    tasksExcused: number;
+    tasksMissed: number;
     successRatio: number;
     streak: number;
   };
   ranges: Record<RangeKey, RangeMetrics>;
+  recentAbsences: Array<{
+    id: string;
+    taskId: string;
+    taskTitle: string;
+    date: string;
+    reason: string;
+  }>;
   charts: {
     weeklyHours: Array<{ label: string; hours: number }>;
-    completionTrend: Array<{ label: string; ratio: number }>;
+    completionTrend: Array<{
+      label: string;
+      ratio: number;
+      assigned: number;
+      completed: number;
+      excused: number;
+      missed: number;
+    }>;
     monthlyHours: Array<{ label: string; hours: number }>;
   };
 }

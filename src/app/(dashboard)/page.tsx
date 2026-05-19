@@ -31,6 +31,8 @@ function StatsCards({
   totalSeconds,
   completed,
   totalTasks,
+  excused,
+  missed,
   success,
   streak,
 }: {
@@ -38,18 +40,22 @@ function StatsCards({
   totalSeconds: number;
   completed: number;
   totalTasks: number;
+  excused: number;
+  missed: number;
   success: number;
   streak: number;
 }) {
+  const rangeLabel = `${range[0].toUpperCase()}${range.slice(1)}`;
   const cards = [
     { label: "Hours logged today", value: formatDuration(totalSeconds) },
-    { label: `${range[0].toUpperCase()}${range.slice(1)} completed`, value: `${completed}/${totalTasks}` },
-    { label: `${range[0].toUpperCase()}${range.slice(1)} success`, value: `${success}%` },
+    { label: `${rangeLabel} completed`, value: `${completed}/${totalTasks}` },
+    { label: `${rangeLabel} absences`, value: excused > 0 || missed > 0 ? `${excused} excused · ${missed} missed` : "None" },
+    { label: `${rangeLabel} success`, value: `${success}%` },
     { label: "Current streak", value: `${streak} days` },
   ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
       {cards.map((card) => (
         <Card key={card.label}>
           <CardHeader className="pb-2">
@@ -95,6 +101,8 @@ export default function DashboardPage() {
           totalSeconds={stats.today.totalSeconds}
           completed={rangeStats.tasksCompleted}
           totalTasks={rangeStats.totalTasks}
+          excused={rangeStats.tasksExcused}
+          missed={rangeStats.tasksMissed}
           success={rangeStats.successRatio}
           streak={stats.today.streak}
         />
@@ -158,7 +166,30 @@ export default function DashboardPage() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="label" />
                     <YAxis domain={[0, 100]} />
-                    <Tooltip />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (!active || !payload?.length) return null;
+                        const point = payload[0]?.payload as {
+                          ratio: number;
+                          assigned: number;
+                          completed: number;
+                          excused: number;
+                          missed: number;
+                        };
+                        if (!point) return null;
+                        return (
+                          <div className="rounded-md border border-slate-200 bg-white p-3 text-xs shadow-sm">
+                            <p className="font-semibold text-slate-900">{label}</p>
+                            <p className="mt-1 text-slate-700">Completion: {point.ratio}%</p>
+                            <p className="text-slate-600">
+                              Done {point.completed}/{point.assigned}
+                            </p>
+                            <p className="text-slate-600">Excused: {point.excused}</p>
+                            <p className="text-rose-700">Missed (no reason): {point.missed}</p>
+                          </div>
+                        );
+                      }}
+                    />
                     <Line type="monotone" dataKey="ratio" stroke="#8B5CF6" strokeWidth={3} dot={{ r: 4 }} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -205,12 +236,32 @@ export default function DashboardPage() {
       </div>
 
       {loading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+          <Skeleton className="h-24" />
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
         </div>
+      ) : null}
+
+      {!loading && stats && stats.recentAbsences.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent task absences</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-3">
+              {stats.recentAbsences.map((absence) => (
+                <li key={absence.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-sm font-semibold text-slate-900">{absence.taskTitle}</p>
+                  <p className="text-xs text-slate-600">{absence.date}</p>
+                  <p className="mt-1 text-sm text-slate-700">{absence.reason}</p>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       ) : null}
 
       <Tabs defaultValue="weekly">

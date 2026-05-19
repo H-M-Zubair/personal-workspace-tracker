@@ -7,6 +7,12 @@ import { useHistory, type HistoryPayload } from "@/lib/hooks/use-history";
 import { useTasks, type TaskDTO } from "@/lib/hooks/use-tasks";
 import { formatDuration } from "@/lib/utils/time";
 import {
+  absenceKey,
+  buildAbsenceMap,
+  classifyTaskDay,
+  tasksAssignedOnDate,
+} from "@/lib/utils/task-schedule";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -26,26 +32,6 @@ type TaskDayRow = {
   reason: string | null;
 };
 
-function tasksAssignedOnDate(dateStr: string, dayLabel: string, tasks: TaskDTO[]): TaskDTO[] {
-  return tasks.filter((task) => {
-    if (!task.is_active) return false;
-    const created = task.created_at?.slice(0, 10) ?? "";
-    if (created > dateStr) return false;
-    if (task.frequency === "once") {
-      return task.single_date === dateStr;
-    }
-    return task.work_days?.includes(dayLabel) ?? false;
-  });
-}
-
-function buildAbsenceMap(absences: HistoryPayload["absences"] | undefined) {
-  const map = new Map<string, string>();
-  (absences ?? []).forEach((a) => {
-    map.set(`${a.task_id}:${a.date}`, a.reason);
-  });
-  return map;
-}
-
 function buildTaskDayRows(
   dateStr: string,
   dayLabel: string,
@@ -58,44 +44,44 @@ function buildTaskDayRows(
 
   return assigned.map((task) => {
     const taskSessions = daySessions.filter((s) => s.task_id === task.id);
-    const reason = absenceMap.get(`${task.id}:${dateStr}`) ?? null;
-    const hasCompleted = taskSessions.some((s) => s.status === "completed");
-    const active = taskSessions.find((s) => s.status === "running" || s.status === "paused");
+    const reason = absenceMap.get(absenceKey(task.id, dateStr)) ?? null;
     const loggedSeconds = taskSessions.reduce((sum, s) => sum + (s.total_seconds ?? 0), 0);
+    const outcome = classifyTaskDay(task.id, dateStr, sessions, absenceMap);
+    const active = taskSessions.find((s) => s.status === "running" || s.status === "paused");
 
-    if (hasCompleted) {
+    if (outcome === "completed") {
       return {
         taskId: task.id,
-        title: task.title,
+        title: task.title ?? "Task",
         kind: "completed" as const,
         sessionStatus: "completed",
         loggedSeconds,
         reason,
       };
     }
-    if (reason) {
+    if (outcome === "excused") {
       return {
         taskId: task.id,
-        title: task.title,
+        title: task.title ?? "Task",
         kind: "excused" as const,
         sessionStatus: active?.status,
         loggedSeconds,
         reason,
       };
     }
-    if (active) {
+    if (outcome === "in_progress") {
       return {
         taskId: task.id,
-        title: task.title,
+        title: task.title ?? "Task",
         kind: "in_progress" as const,
-        sessionStatus: active.status,
+        sessionStatus: active?.status,
         loggedSeconds,
         reason: null,
       };
     }
     return {
       taskId: task.id,
-      title: task.title,
+      title: task.title ?? "Task",
       kind: "pending" as const,
       loggedSeconds: 0,
       reason: null,
@@ -125,6 +111,7 @@ type CalendarDay = {
   totalSeconds: number;
   assignedCount: number;
   completedCount: number;
+  excusedCount: number;
 };
 
 export default function CalendarPage() {
@@ -175,6 +162,7 @@ export default function CalendarPage() {
         if (rows.length === 0) continue;
 
         const completedCount = rows.filter((r) => r.kind === "completed").length;
+        const excusedCount = rows.filter((r) => r.kind === "excused").length;
         const totalSeconds = (dailySessionsMap.get(key) ?? []).reduce((s, x) => s + x.total_seconds, 0);
 
         days.push({
@@ -186,6 +174,7 @@ export default function CalendarPage() {
           totalSeconds,
           assignedCount: rows.length,
           completedCount,
+          excusedCount,
         });
       }
 
@@ -285,6 +274,7 @@ export default function CalendarPage() {
               const ratio =
                 day.assignedCount === 0 ? 0 : Math.round((day.completedCount / day.assignedCount) * 100);
               const pendingMiss = day.rows.filter((r) => r.kind === "pending").length;
+              const excused = day.excusedCount;
               const inProgress = day.rows.filter((r) => r.kind === "in_progress").length;
 
               return (
@@ -308,6 +298,9 @@ export default function CalendarPage() {
                     Tasks: {day.completedCount}/{day.assignedCount} done ({ratio}%)
                   </p>
                   <p className="text-xs text-slate-600">Logged: {formatDuration(day.totalSeconds)}</p>
+                  {excused > 0 ? (
+                    <p className="mt-1 text-[11px] font-medium text-slate-700">{excused} excused absence(s)</p>
+                  ) : null}
                   {pendingMiss > 0 ? (
                     <p className="mt-1 text-[11px] font-medium text-rose-700">{pendingMiss} missed without reason</p>
                   ) : null}
